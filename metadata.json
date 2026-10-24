@@ -1,0 +1,6 @@
+{
+  "name": "Gully Kerala Premier",
+  "description": "An arcade-style village cricket game set in rural Kerala on a lush paddy-field pitch with local rules, Manglish commentary, and synthesized chenda beats.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
