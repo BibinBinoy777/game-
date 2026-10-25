@@ -3,7 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Vennikulam Premier League | Rural Kerala Padam Cricket</title>
+  <title>Vennikulam Premier League | 1v1 Multiplayer Kerala Padam Cricket</title>
+  <!-- PeerJS WebRTC P2P Library for Serverless Online Multiplayer -->
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
   <style>
     :root {
       --kasavu-gold: #D4AF37;
@@ -22,11 +24,11 @@
     .hud-top {
       position: fixed; top: 0; left: 0; right: 0; z-index: 20;
       display: flex; justify-content: space-between; align-items: flex-start;
-      padding: 12px 18px; pointer-events: none;
+      padding: 10px 16px; pointer-events: none;
     }
     .hud-box {
       pointer-events: auto;
-      background: rgba(11, 31, 17, 0.88);
+      background: rgba(11, 31, 17, 0.9);
       border: 1px solid rgba(212, 175, 55, 0.45);
       border-radius: 12px; padding: 8px 14px;
       display: flex; align-items: center; gap: 14px;
@@ -67,48 +69,115 @@
     .swing-btn:active { transform: scale(0.95); }
     .modal-backdrop {
       position: fixed; inset: 0; z-index: 30;
-      background: rgba(0,0,0,0.55); display: flex; align-items: center; justify-content: center; padding: 16px;
+      background: rgba(0,0,0,0.65); display: flex; align-items: center; justify-content: center; padding: 16px;
     }
     .kasavu-card {
-      width: 100%; max-width: 720px; max-height: 92vh; overflow-y: auto;
+      width: 100%; max-width: 680px; max-height: 92vh; overflow-y: auto;
       background: var(--kasavu-cream); color: var(--kerala-green);
       border: 4px solid var(--kasavu-gold); border-radius: 18px;
       box-shadow: 0 24px 48px rgba(0,0,0,0.5);
     }
     .kasavu-strip {
-      height: 14px; width: 100%;
+      height: 12px; width: 100%;
       background: repeating-linear-gradient(90deg, #d4af37 0px, #d4af37 18px, #b45309 18px, #b45309 24px, #fdfbf2 24px, #fdfbf2 30px);
     }
-    .card-body { padding: 24px; }
-    h1 { font-size: 34px; font-weight: 900; text-align: center; color: #0e2414; margin: 4px 0 8px; }
-    .subtitle { text-align: center; font-size: 13px; color: #335c3b; margin-bottom: 18px; }
+    .card-body { padding: 22px; }
+    h1 { font-size: 32px; font-weight: 900; text-align: center; color: #0e2414; margin: 4px 0 6px; }
+    .subtitle { text-align: center; font-size: 12px; color: #335c3b; margin-bottom: 16px; }
     .primary-cta {
-      display: block; width: 100%; max-width: 300px; margin: 14px auto 6px;
+      display: block; width: 100%; max-width: 320px; margin: 14px auto 6px;
       background: var(--kerala-green); color: var(--kasavu-cream);
       border: 2px solid var(--kasavu-gold); border-radius: 12px;
       padding: 14px 24px; font-size: 16px; font-weight: 800; cursor: pointer; text-align: center;
+    }
+    .bowler-bar {
+      position: fixed; bottom: 0; left: 0; right: 0; z-index: 25;
+      background: rgba(11, 31, 17, 0.95); border-top: 2px solid var(--kasavu-gold);
+      padding: 12px 18px; color: var(--kasavu-cream);
     }
     .hidden { display: none !important; }
   </style>
 </head>
 <body>
   <canvas id="gameCanvas"></canvas>
+
+  <div class="hud-top">
+    <div id="scoreCluster" class="hud-box">
+      <div>
+        <div id="battingNameLabel" class="stat-label">SCORE · സ്കോർ</div>
+        <div id="hudScore" class="stat-val">0/0</div>
+      </div>
+      <div>
+        <div id="oversLabel" class="stat-label">OVERS · ഓവർ</div>
+        <div id="hudOvers" class="stat-val">0.0/2.0</div>
+      </div>
+      <div id="targetWrap" class="hidden">
+        <div class="stat-label">TARGET · ലക്ഷ്യം</div>
+        <div id="hudTarget" class="stat-val">25</div>
+      </div>
+    </div>
+    <div class="btn-group">
+      <button id="btnDayEve" class="hud-btn">☀️ Day</button>
+      <button id="btnMonsoon" class="hud-btn">🌧️ Monsoon</button>
+      <button id="btnAudio" class="hud-btn">🔊 Audio</button>
+    </div>
+  </div>
+
+  <!-- Bottom Batting Controls -->
+  <div id="bottomControls" class="hud-bottom hidden">
+    <div class="dir-pad">
+      <button class="dir-btn" id="btnOff">← Off</button>
+      <button class="dir-btn active" id="btnStraight">↑ Straight</button>
+      <button class="dir-btn" id="btnLeg">Leg →</button>
+    </div>
+    <button id="btnSwing" class="swing-btn">🏏 SWING BAT (അടി!)</button>
+  </div>
+
+  <!-- Title & Mode Selector Modal -->
   <div id="titleModal" class="modal-backdrop">
     <div class="kasavu-card">
       <div class="kasavu-strip"></div>
       <div class="card-body">
-        <div style="text-align:center;font-size:12px;font-weight:800;color:#b45309;">RURAL KERALA PADAM CRICKET · വെണ്ണിക്കുളം പ്രീമിയർ ലീഗ്</div>
+        <div style="text-align:center;font-size:11px;font-weight:800;color:#b45309;">
+          RURAL KERALA PADAM CRICKET · വെണ്ണിക്കുളം പ്രീമിയർ ലീഗ്
+        </div>
         <h1>Vennikulam Premier League</h1>
-        <p class="subtitle">Step onto the harvested village paddy field! Smash sixes over the mud varambu into the tall paddy, clang the chayakada tin roof for +2 bonus runs, and stay clear of the winding canal!</p>
-        <button id="btnStartMatch" class="primary-cta">▶ Start Match · കളി തുടങ്ങാം</button>
+        <p class="subtitle">
+          Play Solo or challenge friends in 1v1 Pass & Play or Online WebRTC Multiplayer!
+        </p>
+
+        <div style="display:flex;gap:8px;margin-bottom:14px;">
+          <button id="modeQuick" style="flex:1;padding:10px;border-radius:10px;border:1px solid #d4af37;background:#f4efe0;font-weight:700;cursor:pointer;">
+            Quick Match
+          </button>
+          <button id="modeChase" style="flex:1;padding:10px;border-radius:10px;border:1px solid #d4af37;background:#f4efe0;font-weight:700;cursor:pointer;">
+            Chase Mode
+          </button>
+          <button id="modeTourney" style="flex:1;padding:10px;border-radius:10px;border:1px solid #d4af37;background:#f4efe0;font-weight:700;cursor:pointer;">
+            Tournament
+          </button>
+          <button id="modeMp" style="flex:1;padding:10px;border-radius:10px;border:1px solid #d4af37;background:#14361b;color:#fdfbf2;font-weight:700;cursor:pointer;">
+            Multiplayer 1v1
+          </button>
+        </div>
+
+        <button id="btnLaunchApp" class="primary-cta">
+          ▶ Enter Full App / Multiplayer
+        </button>
       </div>
       <div class="kasavu-strip"></div>
     </div>
   </div>
+
   <script>
-    document.getElementById('btnStartMatch').addEventListener('click', () => {
-      window.location.href = '/';
+    // Standalone redirect and deep-link handler
+    document.getElementById('btnLaunchApp').addEventListener('click', () => {
+      window.location.href = '/' + window.location.search;
     });
+    document.getElementById('modeQuick').addEventListener('click', () => { window.location.href = '/'; });
+    document.getElementById('modeChase').addEventListener('click', () => { window.location.href = '/'; });
+    document.getElementById('modeTourney').addEventListener('click', () => { window.location.href = '/'; });
+    document.getElementById('modeMp').addEventListener('click', () => { window.location.href = '/'; });
   </script>
 </body>
 </html>

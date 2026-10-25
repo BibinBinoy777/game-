@@ -1,77 +1,51 @@
-# Gully Kerala Premier (ഗല്ലി കേരള പ്രീമിയർ)
+# Vennikulam Premier League — Two-Device 1v1 Multiplayer
 
-An arcade-style village cricket browser game set on a lush rural Kerala paddy-field pitch (*padam*), featuring an angled isometric full-field camera, authentic local rules, Web Audio synthesized *chenda* drum beats, unlockable village batters, and Manglish commentary pop-ups.
+Refactor the Multiplayer mode in **Vennikulam Premier League** to remove single-device Pass & Play completely and deliver a dedicated **Two-Device 1v1 Multiplayer** experience powered by a hybrid **Server Room Sync + WebRTC P2P** transport.
 
 ## User Review & Critical Decisions
 
 > [!IMPORTANT]
-> The following core design and gameplay decisions incorporate your confirmed preferences from our clarification step:
+> The following architectural and UX decisions reflect your confirmed preferences before we update the code:
 
-- **Camera Perspective (Confirmed)**: **Angled Isometric Overview** of the entire paddy field (*padam*), allowing players to clearly see the red laterite pitch, surrounding coconut palms, the canal (*kayal*) with a drifting *kettuvallam* (houseboat), the tin-roofed *chayakada* (tea shop), wandering goat and hens, stone wall spectators, and AI fielders moving in real time.
-- **Batsman Unlock Progression (Confirmed)**: **Score Milestone Unlocks + Quick "Unlock All" Toggle**. *Unni* (Power Hitter) is available immediately; *Appu* (Timing Master) unlocks after scoring 25+ runs in a match; *Ammachi* (Lucky Rare Sixes) unlocks after scoring 50+ runs or winning a match—paired with an instant **"Unlock All Batsmen"** toggle on the title screen so anyone can test all traits immediately.
-- **Delivery Experience (Confirmed)**: **Full-Screen Browser Experience** with a self-contained single-file HTML5 export view/copy option accessible from the help modal if you ever want to copy the standalone single-file HTML code, while running natively full-viewport inside the browser.
+- **Dedicated Two-Device Multiplayer Only**: Pass & Play (One Device) and its single-screen privacy curtain are completely removed. Selecting **Multiplayer (2 Devices)** on the start screen goes directly to the Two-Device lobby (**Host on Device 1** or **Join on Device 2**).
+- **4-Letter Room Code & Invite Link**: Device 1 generates a 4-letter room code (e.g., `VPL4`) with a one-tap **Copy Invite Link** (`?room=CODE`) button. Device 2 joins either by entering the 4-letter code or opening the invite link directly.
+- **Hybrid Server Room Sync + WebRTC Transport**: Combines a server-side room relay with WebRTC P2P using idempotent message IDs so two separate phones or laptops connect reliably in under 200ms even across mobile carrier NATs or firewalls.
 
 ---
 
 ## 1. Overview & Core Concept
 
-- **What It Does**: Lets players step onto a muddy, sun-drenched (or monsoon-soaked) Kerala village paddy field to bat against cunning village bowlers across Quick Match, Chase Mode, and a 3-stage Knockout Tournament.
-- **Target Audience / Persona**: Casual and arcade sports game fans who love expressive regional atmosphere, timing-based batting mechanics, and humorous local gully cricket rules.
-- **Key Value**: Combines responsive 60fps arcade batting physics and timing windows with rich Kerala cultural details—mundu-clad uncles and kids, Manglish commentary callouts, village hazards, and procedural Web Audio *chenda* percussion.
+- **What It Does**: Lets two players on two separate devices (phones, tablets, or laptops) play a full two-innings Kerala village padam cricket match against each other in real time.
+- **Target Audience / Persona**: Friends and rivals playing head-to-head on their own devices who want instant room joining without NAT/firewall connection failures.
+- **Key Value**: Each player has their own dedicated screen—the bowler secretly selects Variation (`Fast`, `Spin`, `Slower`, `Bouncer`), Line (`Off`, `Middle`, `Leg`), and Length (`Short`, `Good`, `Full`) on their device within the 3-second countdown while the batter prepares to time their shot on the other device.
 
 ---
 
 ## 2. User Experience & Visual Design
 
-### Key User Flows
-
-1. **Title Screen (Kasavu Border & Live Isometric World Backdrop)**:
-   - Displays the live animated paddy field in the background (swaying coconut palms, drifting houseboat on the canal, pecking hens, and monsoon clouds).
-   - Framed with an animated gold-and-cream Kerala *kasavu* border pattern and a custom SVG title lockup (`Gully Kerala Premier · ഗല്ലി കേരള പ്രീമിയർ`).
-   - Players configure **Game Mode** (Quick Match, Chase Mode vs *Kuttanad XI* / *Munnar Mavericks* / *Kozhikode Kings*, or 3-Match Knockout Tournament), **Overs** (1, 2, or 5 overs), **Batsman** (*Unni*, *Appu*, *Ammachi* with an "Unlock All" toggle), and **Environment** (Day/Night toggle & Monsoon Rain Mode).
-2. **Active Batting Gameplay (Low-Occlusion Perimeter HUD)**:
-   - **Bowler Run-Up & Telegraph**: Bowler approaches and announces delivery type (*Fast*, *Spin*, *Slower Ball*, *Bouncer*) with a brief trajectory preview arc on the red laterite pitch.
-   - **Directional Aim & Timing Swing**: Player selects shot direction (**Off Side / Left**, **Straight / Up**, **Leg Side / Right**) via Arrow keys / `A-W-D` or mobile touch buttons, then presses `Space` or taps **SWING** as the ball enters the sweet spot.
-   - **Ball Flight & Village Rules Resolution**:
-     - **Perfect Timing**: Lofted four or six with camera shake, hit-stop, and *chenda* celebration beat.
-     - **Padam Tall Paddy Zone**: Ball lost in the deep paddy grass triggers an automatic **6 Runs!** (*"Padathil poyi — Sixer!"*).
-     - **Chayakada Tin Roof**: Hitting the tea shop tin roof clangs loudly and awards **+2 Bonus Runs**.
-     - **Kayal (Canal) Hazard**: Hitting directly into the backwater canal splashes the water and triggers an instant **OUT!** (*"Kayalil poyi!"*).
-     - **Goat / Hen Interception**: If the ball hits the wandering goat or hens, a comical pause ensues with a bleat/cluck and **0 Runs (Dead Ball)**.
-     - **Fielder Catch / Ground Fielding**: Mundu-clad uncles and village kids sprint toward the ball to cut off singles/doubles or dive for catches on mistimed lofted shots.
-3. **End-of-Match Summary & Tournament Progression**:
-   - Displays a festive Kasavu-styled scorecard with Total Runs, Wickets, Overs, Boundaries (4s & 6s), Strike Rate, Best Shot description, Session High Score (stored in memory), and a humorous dynamic **Village Title** (*"Padam King"*, *"Chayakada Champion"*, *"Kayal Swimmer"*, or *"Duck Master"*).
-   - Offers instant **Play Again / Next Tournament Match** without page refresh.
-
-### Visual Identity & Theme
-
-- **Aesthetic Direction**: Warm, hand-crafted flat vector/canvas illustration inspired by rural Kerala backwaters and village festival posters.
-- **Color Palette & Mood**:
-  - **60% Dominant Field Canvas**: Lush Paddy Emerald (`#2E7D32` / `#43A047` in Day, `#14361B` in Night, `#1F4E28` in Monsoon) and Backwater Teal (`#1976D2` / `#0D47A1`).
-  - **30% Earth & Architectural Surfaces**: Red Laterite Pitch (`#C85A32`), Kasavu Cream (`#FDFBF2`), Stone Wall & Chayakada Wood (`#6D4C41`), Tin Roof Silver (`#90A4AE`).
-  - **10% Festival Accents**: Kasavu Gold (`#D4AF37`), Temple Vermilion (`#D32F2F`), Auto-Rickshaw Yellow/Black (`#FBC02D`).
-- **Typography & Hierarchy**:
-  - **Display Face**: Bold expressive geometric/condensed display headers for scores, Manglish pop-ups, and titles.
-  - **Body & Bilingual Subtitles**: Clean, high-contrast English labels paired with Malayalam script subtitles (`കളി തുടങ്ങാം`, `സ്കോർ`, `ഓവർ`).
-  - **Numeric Readouts**: Strict `tabular-nums` alignment for Score, Overs, Target, Required Runs, and Strike Rate.
-- **Interactive Feedback & Motion**:
-  - 45ms hit-stop and decaying screen shake on Perfect timing boundaries.
-  - Floating Manglish comic callouts (*"Adipoli shot!"*, *"Sixer, mone!"*, *"Pidikkada!"*, *"Out aayallo!"*, *"Kidilam!"*, *"Poda!"*) with spring scale-in animation.
-  - Monsoon rain particle overlay that slows ball roll on the grass and makes spin/pace skid unpredictably on the wet pitch.
+- **Key User Flows**:
+  1. **Start Screen → Two-Device Lobby**: Clicking **Multiplayer (2 Devices)** opens the Two-Device lobby directly with two clean actions: **Host Match (Device 1)** and **Join Match (Device 2)**.
+  2. **Host Flow (Device 1)**: Enters player name & batsman (`Sunni`, `Maanu`, or `Pro`), picks overs (`1`, `2`, or `5`), and clicks **Create Room**. Immediately displays the 4-letter room code and **Copy Invite Link** button while waiting for Device 2.
+  3. **Guest Flow (Device 2)**: Opens the `?room=CODE` link (which auto-fills the code and switches to Guest mode) or types the 4-letter code and clicks **Join Room**.
+  4. **Synchronized Coin Toss**: Once connected, both devices transition to the animated gold sovereign coin toss (`Heads / പൂവ്` or `Tails / കായ്`). The toss winner selects **Bat** or **Bowl** on their device.
+  5. **Live Two-Device Innings**:
+     - **Bowling Device**: Sees the bottom-docked 3-second delivery selector (`Fast / Spin / Slower / Bouncer`, `Off / Middle / Leg`, `Short / Good / Full`) and locks in the secret ball.
+     - **Batting Device**: Sees `"Bowler is setting delivery..."` until release, then times the swing and picks direction (`← Off`, `↑ Straight`, `Leg →`).
+  6. **Post-Match Scorecard & Rematch**: Both devices see the two-innings comparison scorecard, village awards (*"Padam King"*, *"Chayakada Champion"*, *"Kayalil Poyi Award"*), series score tracker, and **Rematch** button.
+- **Visual Identity & Theme**:
+  - Retains the Kerala Kasavu gold (`#D4AF37`), lush paddy green (`#14361B`), cream (`#FDFBF2`), and laterite (`#B45309`) palette alongside `Outfit`, `Plus Jakarta Sans`, and `JetBrains Mono` (`tabular-nums`).
+  - Unobtrusive HUD occupying under 15% of viewport height so the harvested paddy field, mud bund, winding canal, and fielders remain in full view.
 
 ---
 
 ## 3. Key Product Decisions & Trade-Offs
 
-- **Decision 1: Angled Isometric Projection on 2D HTML5 Canvas**
-  - *Chosen Approach*: Custom isometric world-to-screen coordinate transform `(x, y, z)` rendered at 60fps on a single `<canvas>`.
-  - *Why*: Lets players simultaneously appreciate the ball's 3D parabolic loft height (`z`), lateral shot direction (`x, y`), and all surrounding village landmarks (canal on the off-side boundary, chayakada on leg-side, deep paddy straight down the ground, temple/church on the horizon).
-- **Decision 2: Pure Web Audio API Procedural Sound Engine**
-  - *Chosen Approach*: Zero external audio files; synthesized wooden bat crack, tin roof metallic clang, water splash, goat bleat, crowd filtered-noise roar, and rhythmic *chenda* percussion roll on boundaries.
-  - *Why*: Guarantees instant zero-latency playback, zero broken network assets, and full compliance with single-file self-contained rules.
-- **Decision 3: In-Memory Session Progression**
-  - *Chosen Approach*: High scores, unlocked batsmen, and tournament bracket progress live in an in-memory session state object (no `localStorage`).
-  - *Why*: Strictly honors the prompt specification while providing an instant "Unlock All" toggle for convenience.
+- **Decision 1: Removing Single-Device Pass & Play**
+  - *Chosen Approach*: Remove the Pass & Play sub-mode and privacy handover curtain so Multiplayer is 100% focused on Two-Device play.
+  - *Why*: Eliminates mode confusion and lets each player experience real-time head-to-head batting and bowling on their own device.
+- **Decision 2: Hybrid Server Room Sync + WebRTC P2P**
+  - *Chosen Approach*: Pair PeerJS WebRTC data channels with a lightweight server-backed room message queue (`/api/mp-room`) and deduplicated message IDs.
+  - *Why*: Pure WebRTC often fails or stalls when two phones are on different cellular networks or restricted Wi-Fi. With hybrid sync, room creation and joining succeed 100% of the time, and every delivery, swing, toss, and emote arrives reliably with minimal latency.
 
 ---
 
@@ -80,62 +54,40 @@ An arcade-style village cricket browser game set on a lush rural Kerala paddy-fi
 ### Architecture & Component Diagram
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                     GULLY KERALA PREMIER (Game Shell)                   │
-├───────────────────────────────────┬─────────────────────────────────────┤
-│   Configurable Constants & Rules  │     In-Memory Session Store         │
-│   • DIFFICULTY_PRESETS            │     • highScore, unlockedBatsmen    │
-│   • OVER_OPTIONS (1, 2, 5)        │     • unlockAllOverride             │
-│   • PALETTE (Day/Night/Monsoon)   │     • tournamentStage (QF/SF/Final) │
-└─────────────────┬─────────────────┴──────────────────┬──────────────────┘
-                  │                                    │
-                  ▼                                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    Core 60fps Game Loop (requestAnimationFrame)         │
-│  ┌──────────────────────┐  ┌──────────────────────┐  ┌───────────────┐  │
-│  │ Isometric World      │  │ Bowling & Batting    │  │ Village Rules │  │
-│  │ Renderer (Canvas)    │  │ Physics Engine       │  │ & AI Fielders │  │
-│  │ • Padam & Pitch      │  │ • Fast/Spin/Bouncer  │  │ • Kayal (OUT) │  │
-│  │ • Canal & Houseboat  │  │ • Slower Ball        │  │ • Tin Roof +2 │  │
-│  │ • Chayakada & Wall   │  │ • Trajectory Arc     │  │ • Paddy = 6   │  │
-│  │ • Goat, Hens, Auto   │  │ • Timing Window Eval │  │ • Goat/Hen 0  │  │
-│  └──────────────────────┘  └──────────────────────┘  └───────────────┘  │
-└─────────────────┬────────────────────────────────────┬──────────────────┘
-                  │                                    │
-                  ▼                                    ▼
-┌───────────────────────────────────┐  ┌──────────────────────────────────┐
-│   Low-Occlusion Perimeter HUD     │  │   Web Audio Synthesizer          │
-│   • Score / Wickets / Overs       │  │   • Bat Hit & Edge Tick          │
-│   • Target / Req Runs / SR        │  │   • Chenda Drum Boundary Loop    │
-│   • Manglish Pop-up Banner        │  │   • Crowd Cheer / Splash / Roof  │
-│   • Mobile Touch Direction & Bat  │  │   • Global Mute Toggle           │
-└───────────────────────────────────┘  └──────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────────┐
+│                   Vennikulam Premier League (Two-Device)                   │
+└─────────────────────────────────────┬──────────────────────────────────────┘
+                                      │
+        ┌─────────────────────────────┴─────────────────────────────┐
+        ▼                                                           ▼
+┌───────────────────────────────┐                           ┌───────────────────────────────┐
+│   Device 1: Host (Authoritative)│                         │     Device 2: Guest Client    │
+│  • Creates 4-Letter Room Code │                           │  • Joins via Code or ?room=   │
+│  • Runs Physics & Outcome Sim │                           │  • Sends Bowler/Batter Inputs │
+│  • Renders Padam Canvas + HUD │                           │  • Renders Synced Canvas + HUD│
+└───────────────┬───────────────┘                           └───────────────┬───────────────┘
+                │                                                           │
+                └─────────────► Dual Transport Network Layer ◄──────────────┘
+                                              │
+                        ┌─────────────────────┴─────────────────────┐
+                        ▼                                           ▼
+        ┌───────────────────────────────┐           ┌───────────────────────────────┐
+        │   Server Room Sync (/api)     │           │   PeerJS WebRTC DataChannel   │
+        │  • Instant Room Registration  │           │  • Direct P2P Fast Path       │
+        │  • Ordered Event Relay Queue  │           │  • Sub-50ms Local Delivery    │
+        │  • Heartbeat & Presence Track │           │  • Automatic Fallback         │
+        └───────────────────────────────┘           └───────────────────────────────┘
 ```
 
-### Data Model & State
+### Data Model & State Synchronization
 
-- **`CONFIG` (Top-of-File Tunable Constants)**:
-  - `DIFFICULTY`: Timing window tolerances (`perfectWindowMs`, `goodWindowMs`, `edgeWindowMs`), bowler speed multipliers, and AI fielder sprint speed.
-  - `OVERS_OPTIONS`: `[1, 2, 5]` (default `2` overs = 12 balls).
-  - `BATSMEN`:
-    - `unni`: Power Hitter (+25% exit velocity, easier 6s).
-    - `appu`: Timing Master (+30% wider Perfect/Good timing window).
-    - `ammachi`: Lucky Legend (35% chance to turn edges or mishits into miraculous sixes over the coconut palms).
-  - `RIVAL_TEAMS`:
-    - *Kuttanad XI* (Easy/Medium target, spin-heavy),
-    - *Munnar Mavericks* (Medium/Hard target, fast & bouncer-heavy),
-    - *Kozhikode Kings* (Hard tournament final, deceptive slower balls & tight fielding).
-- **`gameState` Object**:
-  - `screen`: `'TITLE' | 'PLAYING' | 'PAUSED' | 'SUMMARY'`
-  - `mode`: `'QUICK' | 'CHASE' | 'TOURNAMENT'`
-  - `weather`: `{ night: boolean, monsoon: boolean }`
-  - `match`: `{ runs, wickets, maxWickets, ballsBowled, totalBalls, fours, sixes, target, bestShot, ballHistory }`
-  - `delivery`: `{ state: 'IDLE' | 'RUNUP' | 'BOWLING' | 'HIT' | 'DEAD', type: 'FAST' | 'SPIN' | 'SLOWER' | 'BOUNCER', pos: {x,y,z}, vel: {vx,vy,vz}, aimDir: -1 | 0 | 1, timingRating }`
-
-### Interactive Component & State Mapping
-
-- **Title Screen Controls**: Mode selector cards, Overs selector (`1 / 2 / 5`), Batsman selector with lock status and `"Unlock All"` switch, Day/Night & Monsoon toggles, and `"Start Match (കളി തുടങ്ങാം)"` button.
-- **In-Game Controls**:
-  - Keyboard: `ArrowLeft`/`A` (Off Side), `ArrowUp`/`W` (Straight), `ArrowRight`/`D` (Leg Side), `Space`/`Enter` or Canvas Click (Swing Bat), `M` (Mute), `R` (Quick Restart), `P`/`Escape` (Pause).
-  - Mobile/Touch: Dedicated bottom-left directional pad (`OFF`, `STR`, `LEG`) and bottom-right oversized `SWING (അടി!)` button, keeping >85% of the isometric field completely unobstructed.
-- **Summary & Replay Flow**: Calculates strike rate, determines village title, updates session high score and milestone unlocks, and resets `match` and `delivery` states cleanly on replay.
+- **Room Session State**:
+  - `roomCode`: 4-character alphanumeric code (`A-Z`, `2-9`).
+  - `hostConnected` / `guestConnected`: Real-time presence timestamps for 30-second disconnect detection and auto-reconnect.
+  - `events`: Ordered list of envelopes `{ id: string, sender: 'HOST' | 'GUEST', timestamp: number, message: PeerMessage }`.
+- **Idempotent Event Deduplication**:
+  - `PeerNetworkManager` assigns a unique `id` to every outgoing `PeerMessage` and tracks `seenMessageIds` (`Set<string>`).
+  - Whether an event arrives first via WebRTC P2P or via the Server Room Sync poll, it is processed exactly once and never duplicated.
+- **Interactive Component & State Mapping**:
+  - **Two-Device Lobby Panel**: Toggle between **Host Match (Device 1)** and **Join Match (Device 2)**, edit player name/character, copy `?room=CODE` invite link, and auto-join when `?room=CODE` is present in the URL.
+  - **Authoritative Ball & Swing Resolution**: When Device 2 is bowling, its 3-second delivery selection is sent via `BOWLING_CHOICE` to Device 1; when Device 2 is batting, its swing timing and direction are sent via `BATTER_SWING` and resolved deterministically.

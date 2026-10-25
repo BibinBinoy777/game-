@@ -1,7 +1,42 @@
 'use client';
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Volume2, VolumeX, Sun, Sunset, CloudRain, Trophy, RotateCcw, Play, Pause, Sparkles, Award } from 'lucide-react';
+import {
+  Volume2,
+  VolumeX,
+  Sun,
+  Sunset,
+  CloudRain,
+  Trophy,
+  RotateCcw,
+  Play,
+  Pause,
+  Sparkles,
+  Award,
+  Users,
+  Copy,
+  Check,
+  Wifi,
+  WifiOff,
+  Radio,
+  ArrowRight,
+  Shield,
+  Smile,
+  Send,
+  MessageCircle,
+} from 'lucide-react';
+import {
+  MpMode,
+  MpRole,
+  BowlingVariation,
+  BowlingLine,
+  BowlingLength,
+  BowlingDeliveryChoice,
+  InningsScorecard,
+  MP_EMOTES,
+  PeerMessage,
+} from '@/lib/multiplayerTypes';
+import { PeerNetworkManager } from '@/lib/peerNetworkManager';
 
 // ============================================================================
 // 1. CONFIGURABLE CONSTANTS (TWEAK DIFFICULTY, OVER COUNTS & COLOURS HERE)
@@ -101,30 +136,30 @@ export const GAME_CONFIG = {
     },
   ],
 
-  // Realistic Rural Kerala Padam Palettes (Golden Hour Day, Evening Sunset, Monsoon)
+  // Realistic Rural Kerala Padam Palettes
   COLORS: {
     DAY: {
-      skyTop: '#D97706',      // Warm golden-hour upper tint
-      skyMid: '#FBBF24',      // Soft morning/golden mist
-      skyHorizon: '#FEF3C7',  // Hazy warm horizon
+      skyTop: '#D97706',
+      skyMid: '#FBBF24',
+      skyHorizon: '#FEF3C7',
       distantHills: '#3F6212',
       midHills: '#365314',
       outerEarth: '#57534E',
-      padamBase: '#656D4A',   // Olive-khaki harvested paddy earth
-      padamDry: '#7F7756',    // Dry khaki earth
-      padamGreen: '#4A5D23',  // Patchy dusty olive grass
-      padamSoil: '#8B7355',   // Bare sandy trampled soil
-      bundMud: '#5C4033',     // Raised mud varambu bund
-      pitchClay: '#9A4628',   // Compacted red-brown laterite clay
+      padamBase: '#656D4A',
+      padamDry: '#7F7756',
+      padamGreen: '#4A5D23',
+      padamSoil: '#8B7355',
+      bundMud: '#5C4033',
+      pitchClay: '#9A4628',
       pitchDark: '#7C3219',
-      canalWater: '#3B4D3B',  // Muddy brown-green village canal water
+      canalWater: '#3B4D3B',
       canalBank: '#4E3B2B',
       shadowColor: 'rgba(28, 25, 23, 0.28)',
     },
     EVENING: {
-      skyTop: '#311042',      // Deep twilight violet
-      skyMid: '#C2410C',      // Rich sunset orange-crimson
-      skyHorizon: '#FDBA74',  // Warm peach-gold horizon
+      skyTop: '#311042',
+      skyMid: '#C2410C',
+      skyHorizon: '#FDBA74',
       distantHills: '#1E293B',
       midHills: '#1A2E1A',
       outerEarth: '#3B322C',
@@ -140,18 +175,18 @@ export const GAME_CONFIG = {
       shadowColor: 'rgba(15, 10, 20, 0.42)',
     },
     MONSOON: {
-      skyTop: '#334155',      // Heavy monsoon slate
+      skyTop: '#334155',
       skyMid: '#475569',
       skyHorizon: '#94A3B8',
       distantHills: '#1E3A2F',
       midHills: '#143323',
       outerEarth: '#3F3A34',
-      padamBase: '#3F4E2E',   // Wet dark olive soil
+      padamBase: '#3F4E2E',
       padamDry: '#4E4937',
       padamGreen: '#2D471E',
-      padamSoil: '#574433',   // Wet mud
+      padamSoil: '#574433',
       bundMud: '#3E2A1E',
-      pitchClay: '#6E2B14',   // Dark damp laterite clay
+      pitchClay: '#6E2B14',
       pitchDark: '#4D1C0B',
       canalWater: '#2C4035',
       canalBank: '#332419',
@@ -163,8 +198,8 @@ export const GAME_CONFIG = {
 // ============================================================================
 // 2. TYPES & INTERFACES
 // ============================================================================
-type GameScreen = 'TITLE' | 'PLAYING' | 'PAUSED' | 'SUMMARY';
-type GameMode = 'QUICK' | 'CHASE' | 'TOURNAMENT';
+type GameScreen = 'TITLE' | 'PLAYING' | 'PAUSED' | 'SUMMARY' | 'TOSS' | 'INNINGS_BREAK';
+type GameMode = 'QUICK' | 'CHASE' | 'TOURNAMENT' | 'MULTIPLAYER';
 type BallType = 'FAST' | 'SPIN' | 'SLOWER' | 'BOUNCER';
 type AimDirection = -1 | 0 | 1;
 type DeliveryPhase = 'READY' | 'RUNUP' | 'BOWLING' | 'HIT_FLIGHT' | 'BALL_SETTLED';
@@ -224,8 +259,18 @@ interface FlyingBirdSprite {
   direction: 1 | -1;
 }
 
+interface ActiveEmote {
+  id: string;
+  text: string;
+  sender: string;
+  x: number;
+  y: number;
+  alpha: number;
+  color: string;
+}
+
 // ============================================================================
-// 3. WEB AUDIO API SYNTHESIZER (NO EXTERNAL FILES)
+// 3. WEB AUDIO API SYNTHESIZER
 // ============================================================================
 class KeralaAudioEngine {
   ctx: AudioContext | null = null;
@@ -434,6 +479,25 @@ class KeralaAudioEngine {
       osc.stop(now + d + 0.09);
     });
   }
+
+  playCoinToss() {
+    if (this.muted) return;
+    this.init();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    for (let i = 0; i < 7; i++) {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(1200 + i * 180, now + i * 0.08);
+      gain.gain.setValueAtTime(0.12, now + i * 0.08);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.08 + 0.07);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now + i * 0.08);
+      osc.stop(now + i * 0.08 + 0.08);
+    }
+  }
 }
 
 const audio = new KeralaAudioEngine();
@@ -468,6 +532,9 @@ const COMMENTARY = {
   BOWLED_OUT: [
     { text: 'Out aayallo! Clean Bowled!', sub: 'ക്ലീൻ ബൗൾഡ് ആയി!' },
   ],
+  LBW_OUT: [
+    { text: 'Plumb in front! LBW Out!', sub: 'നേരെ പാഡിൽ! എൽ.ബി.ഡബ്ല്യു ഔട്ട്!' },
+  ],
   ANIMAL_DOT: [
     { text: 'Aadu thaduthu! Comic Dot Ball!', sub: 'ആട് തടുത്തു! റൺ ഇല്ല!' },
     { text: 'Kozhi pidichu! No Run!', sub: 'കോഴി തട്ടി! റൺ ഇല്ല!' },
@@ -482,18 +549,15 @@ const COMMENTARY = {
   ],
 };
 
-// Deterministic pseudo-random helper for organic ground textures
 function seededRandom(seed: number) {
   const x = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
   return x - Math.floor(x);
 }
 
-// Canal bank X boundary at a given world Y coordinate (winding natural canal along left edge)
 function getCanalBankX(wy: number): number {
   return -218 + Math.sin(wy * 0.014) * 22 + Math.cos(wy * 0.008) * 14;
 }
 
-// Generator function for randomized Crow (Kaakka) or Paddy Heron/Egret (Kokk) sprites
 export function generateRandomBirdSprites(
   viewportWidth: number = 1280,
   viewportHeight: number = 720,
@@ -503,8 +567,8 @@ export function generateRandomBirdSprites(
   const direction: 1 | -1 = Math.random() < 0.5 ? 1 : -1;
   const count =
     species === 'HERON'
-      ? 1 + Math.floor(Math.random() * 3) // 1 to 3 graceful paddy herons in formation
-      : 1 + Math.floor(Math.random() * 4); // 1 to 4 village crows
+      ? 1 + Math.floor(Math.random() * 3)
+      : 1 + Math.floor(Math.random() * 4);
 
   const baseX = initialScatter
     ? Math.random() * viewportWidth
@@ -512,7 +576,6 @@ export function generateRandomBirdSprites(
     ? -50 - Math.random() * 40
     : viewportWidth + 50 + Math.random() * 40;
 
-  // Herons glide lower near the misty hills/paddy horizon; crows fly across upper-mid sky
   const baseY =
     species === 'HERON'
       ? viewportHeight * (0.11 + Math.random() * 0.13)
@@ -520,8 +583,8 @@ export function generateRandomBirdSprites(
 
   const baseSpeed =
     species === 'HERON'
-      ? 34 + Math.random() * 18 // Slower, stately glide
-      : 48 + Math.random() * 26; // Brisk crow flight
+      ? 34 + Math.random() * 18
+      : 48 + Math.random() * 26;
 
   const sprites: FlyingBirdSprite[] = [];
   for (let i = 0; i < count; i++) {
@@ -552,7 +615,13 @@ export default function GullyKeralaGame() {
 
   // React UI state
   const [screen, setScreen] = useState<GameScreen>('TITLE');
-  const [mode, setMode] = useState<GameMode>('QUICK');
+  const [mode, setMode] = useState<GameMode>(() => {
+    if (typeof window !== 'undefined') {
+      const p = new URLSearchParams(window.location.search);
+      if (p.get('room')) return 'MULTIPLAYER';
+    }
+    return 'QUICK';
+  });
   const [overs, setOvers] = useState<number>(GAME_CONFIG.DEFAULT_OVERS);
   const [selectedRivalIdx, setSelectedRivalIdx] = useState<number>(0);
   const [selectedBatsmanId, setSelectedBatsmanId] = useState<string>('unni');
@@ -562,7 +631,95 @@ export default function GullyKeralaGame() {
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [aimDir, setAimDir] = useState<AimDirection>(0);
 
-  // In-memory session progression
+  // ==========================================================================
+  // TWO-DEVICE MULTIPLAYER STATE
+  // ==========================================================================
+  const [mpRole, setMpRole] = useState<MpRole>(() => {
+    if (typeof window !== 'undefined') {
+      const p = new URLSearchParams(window.location.search);
+      if (p.get('room')) return 'GUEST';
+    }
+    return 'HOST';
+  });
+  const [p1Name, setP1Name] = useState<string>('Sunni (Device 1)');
+  const [p2Name, setP2Name] = useState<string>('Maanu (Device 2)');
+  const [p1Batsman, setP1Batsman] = useState<string>('unni');
+  const [p2Batsman, setP2Batsman] = useState<string>('appu');
+
+  // Network State
+  const [roomCodeInput, setRoomCodeInput] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const p = new URLSearchParams(window.location.search);
+      const r = p.get('room');
+      if (r) return r.toUpperCase();
+    }
+    return '';
+  });
+  const [activeRoomCode, setActiveRoomCode] = useState<string>('');
+  const [isConnected, setIsConnected] = useState<boolean>(false);
+  const [pingMs, setPingMs] = useState<number | null>(null);
+  const [isConnecting, setIsConnecting] = useState<boolean>(false);
+  const [connError, setConnError] = useState<string | null>(null);
+  const [copiedLink, setCopiedLink] = useState<boolean>(false);
+  const [disconnectAlert, setDisconnectAlert] = useState<boolean>(false);
+
+  // Series score (best of 3 or cumulative)
+  const [seriesScore, setSeriesScore] = useState<{ p1Wins: number; p2Wins: number }>({
+    p1Wins: 0,
+    p2Wins: 0,
+  });
+
+  // Toss State
+  const [tossCaller, setTossCaller] = useState<'P1' | 'P2'>('P1');
+  const [tossCallChoice, setTossCallChoice] = useState<'HEADS' | 'TAILS'>('HEADS');
+  const [tossFlipping, setTossFlipping] = useState<boolean>(false);
+  const [tossWinner, setTossWinner] = useState<'P1' | 'P2' | null>(null);
+  const [tossDecision, setTossDecision] = useState<'BAT' | 'BOWL' | null>(null);
+
+  // Innings & Match State
+  const [currentInnings, setCurrentInnings] = useState<1 | 2>(1);
+  const [isSuperOver, setIsSuperOver] = useState<boolean>(false);
+  const [innings1Score, setInnings1Score] = useState<InningsScorecard | null>(null);
+  const [innings2Score, setInnings2Score] = useState<InningsScorecard | null>(null);
+
+  // Bowling Controls State (Human Bowler Choice on Bowling Device)
+  const [bowlerChoiceTimer, setBowlerChoiceTimer] = useState<number>(3.0);
+  const [bowlerVariation, setBowlerVariation] = useState<BowlingVariation>('FAST');
+  const [bowlerLine, setBowlerLine] = useState<BowlingLine>('MIDDLE');
+  const [bowlerLength, setBowlerLength] = useState<BowlingLength>('GOOD');
+  const [isBowlerChoosing, setIsBowlerChoosing] = useState<boolean>(false);
+
+  // Emotes State
+  const [activeEmotes, setActiveEmotes] = useState<ActiveEmote[]>([]);
+  const [emoteCooldown, setEmoteCooldown] = useState<boolean>(false);
+
+  const netManagerRef = useRef<PeerNetworkManager | null>(null);
+  const peerMessageHandlerRef = useRef<(msg: PeerMessage) => void>(() => {});
+  const hostLobbyStateRef = useRef({
+    p1Name,
+    p2Name,
+    p1Batsman,
+    p2Batsman,
+    overs,
+    timeOfDay,
+    isMonsoon,
+    mpRole,
+  });
+
+  useEffect(() => {
+    hostLobbyStateRef.current = {
+      p1Name,
+      p2Name,
+      p1Batsman,
+      p2Batsman,
+      overs,
+      timeOfDay,
+      isMonsoon,
+      mpRole,
+    };
+  }, [p1Name, p2Name, p1Batsman, p2Batsman, overs, timeOfDay, isMonsoon, mpRole]);
+
+  // In-memory single-player progression
   const [sessionStats, setSessionStats] = useState({
     highScore: 0,
     matchesWon: 0,
@@ -588,9 +745,11 @@ export default function GullyKeralaGame() {
     matchResultTitle: '',
     matchWon: false,
     villageTitle: 'Padam Rookie',
+    loserTitle: '',
+    winnerName: '',
+    loserName: '',
   });
 
-  // Coconut palms list around the village padam (uneven heights & natural leans)
   const palmsRef = useRef<PalmTree[]>([
     { wx: -185, wy: -255, height: 112, lean: -14, frondCount: 7, seed: 1 },
     { wx: -135, wy: -275, height: 96, lean: 10, frondCount: 6, seed: 2 },
@@ -605,10 +764,13 @@ export default function GullyKeralaGame() {
     { wx: 255, wy: 165, height: 114, lean: -16, frondCount: 7, seed: 11 },
   ]);
 
-  // Mutable simulation state inside ref for 60fps loop
+  // Mutable simulation ref for 60fps loop
   const simRef = useRef({
     screen: 'TITLE' as GameScreen,
     mode: 'QUICK' as GameMode,
+    mpRole: 'HOST' as MpRole,
+    isLocalPlayerBatting: true,
+    isLocalPlayerBowling: false,
     overs: GAME_CONFIG.DEFAULT_OVERS,
     rivalIdx: 0,
     batsmanId: 'unni',
@@ -616,6 +778,7 @@ export default function GullyKeralaGame() {
     isMonsoon: false,
     aimDir: 0 as AimDirection,
 
+    // Match tracking
     runs: 0,
     wickets: 0,
     balls: 0,
@@ -626,9 +789,19 @@ export default function GullyKeralaGame() {
     bestShot: 'Classic Village Drive',
     lastBalls: [] as string[],
 
+    // Innings & Multiplayer
+    currentInnings: 1 as 1 | 2,
+    isSuperOver: false,
+    battingPlayerName: 'Sunni (Device 1)',
+    bowlingPlayerName: 'Maanu (Device 2)',
+    innings1Score: null as InningsScorecard | null,
+
+    // Delivery & Physics
     phase: 'READY' as DeliveryPhase,
     phaseTimer: 1.2,
     ballType: 'FAST' as BallType,
+    ballLine: 'MIDDLE' as BowlingLine,
+    ballLength: 'GOOD' as BowlingLength,
     ballProgress: 0,
     ballSpeed: 0.65,
     ballSpinCurve: 0,
@@ -653,9 +826,13 @@ export default function GullyKeralaGame() {
     popupSub: '',
     popupColor: '#D4AF37',
 
-    // Animated Village Life Entities
+    // Human bowling choice countdown
+    bowlerChoosing: false,
+    bowlerTimer: 3.0,
+
+    // Animated Entities
     boatY: -180,
-    goat: { x: 168, y: -195, angle: 0, pauseTimer: 0 }, // Tied near the northern varambu bund
+    goat: { x: 168, y: -195, angle: 0, pauseTimer: 0 },
     dog: { x: -120, y: 165, vx: 16, vy: 5 },
     hens: [
       { x: 152, y: 142, phase: 0 },
@@ -701,14 +878,7 @@ export default function GullyKeralaGame() {
     }));
   }, []);
 
-  const pickNextBallType = useCallback((rivalIdx: number): BallType => {
-    const rival = GAME_CONFIG.RIVALS[rivalIdx] || GAME_CONFIG.RIVALS[0];
-    const types: BallType[] = ['FAST', 'SPIN', 'SLOWER', 'BOUNCER'];
-    if (Math.random() < 0.42) return rival.favoredBall;
-    return types[Math.floor(Math.random() * types.length)];
-  }, []);
-
-  // Spawn dust puffs, mud splashes, or celebration particles
+  // Spawn dust puffs & boundary bursts
   const spawnParticles = (x: number, y: number, z: number, color: string, count = 14, speedScale = 1) => {
     const s = simRef.current;
     for (let i = 0; i < count; i++) {
@@ -738,53 +908,388 @@ export default function GullyKeralaGame() {
     s.popupTimer = 2.1;
   };
 
-  const startMatch = useCallback(
-    (customMode?: GameMode, customRivalIdx?: number, customOvers?: number) => {
+  const triggerEmote = useCallback(
+    (emoteText: string, senderName: string, color: string) => {
+      const id = `${Date.now()}-${Math.random()}`;
+      const newEmote: ActiveEmote = {
+        id,
+        text: emoteText,
+        sender: senderName,
+        x: typeof window !== 'undefined' ? window.innerWidth * (0.35 + Math.random() * 0.3) : 300,
+        y: typeof window !== 'undefined' ? window.innerHeight * 0.45 : 300,
+        alpha: 1.0,
+        color,
+      };
+      setActiveEmotes((prev) => [...prev.slice(-4), newEmote]);
+
+      if (mode === 'MULTIPLAYER' && netManagerRef.current?.isConnected()) {
+        netManagerRef.current.send({
+          type: 'EMOTE',
+          payload: { text: emoteText, sender: senderName, color },
+        });
+      }
+
+      setEmoteCooldown(true);
+      setTimeout(() => setEmoteCooldown(false), 3000);
+    },
+    [mode]
+  );
+
+  // Determine whose turn it is to bat / bowl across the two devices
+  const isP1Batting =
+    currentInnings === 1
+      ? tossWinner === 'P1'
+        ? tossDecision === 'BAT'
+        : tossDecision === 'BOWL'
+      : !(tossWinner === 'P1' ? tossDecision === 'BAT' : tossDecision === 'BOWL');
+  const currentBattingName = isP1Batting ? p1Name : p2Name;
+  const currentBowlingName = isP1Batting ? p2Name : p1Name;
+
+  const isLocalPlayerBatting =
+    mode !== 'MULTIPLAYER' || (mpRole === 'HOST' ? isP1Batting : !isP1Batting);
+  const isLocalPlayerBowling =
+    mode === 'MULTIPLAYER' && (mpRole === 'HOST' ? !isP1Batting : isP1Batting);
+
+  // ==========================================================================
+  // TWO-DEVICE MULTIPLAYER NETWORK SETUP
+  // ==========================================================================
+  useEffect(() => {
+    const net = new PeerNetworkManager();
+    netManagerRef.current = net;
+
+    net.onConnected = () => {
+      setIsConnected(true);
+      setIsConnecting(false);
+      setConnError(null);
+      setDisconnectAlert(false);
+
+      if (hostLobbyStateRef.current.mpRole === 'HOST') {
+        net.send({
+          type: 'LOBBY_STATE',
+          payload: {
+            p1Name: hostLobbyStateRef.current.p1Name,
+            p2Name: hostLobbyStateRef.current.p2Name,
+            p1Batsman: hostLobbyStateRef.current.p1Batsman,
+            p2Batsman: hostLobbyStateRef.current.p2Batsman,
+            overs: hostLobbyStateRef.current.overs,
+            timeOfDay: hostLobbyStateRef.current.timeOfDay,
+            isMonsoon: hostLobbyStateRef.current.isMonsoon,
+          },
+        });
+      } else {
+        net.send({
+          type: 'GUEST_PROFILE',
+          payload: {
+            p2Name: hostLobbyStateRef.current.p2Name,
+            p2Batsman: hostLobbyStateRef.current.p2Batsman,
+          },
+        });
+      }
+    };
+
+    net.onDisconnected = (willWait) => {
+      setIsConnected(false);
+      if (willWait) {
+        setDisconnectAlert(true);
+      } else {
+        setConnError('Other device disconnected.');
+      }
+    };
+
+    net.onReconnected = () => {
+      setIsConnected(true);
+      setDisconnectAlert(false);
+    };
+
+    net.onPingUpdated = (ms) => {
+      setPingMs(ms);
+    };
+
+    net.onError = (err) => {
+      setConnError(err);
+      setIsConnecting(false);
+    };
+
+    net.onMessage = (msg: PeerMessage) => {
+      peerMessageHandlerRef.current(msg);
+    };
+
+    // Auto-join if ?room=CODE is present in URL on Device 2
+    if (typeof window !== 'undefined') {
+      const p = new URLSearchParams(window.location.search);
+      const r = p.get('room');
+      if (r && r.trim().length >= 4) {
+        const cleanCode = r.trim().toUpperCase();
+        setTimeout(() => {
+          setActiveRoomCode(cleanCode);
+          setIsConnecting(true);
+          net.joinRoom(cleanCode);
+        }, 120);
+      }
+    }
+
+    return () => {
+      net.cleanup();
+    };
+  }, []);
+
+  // Update active emotes opacity decay
+  useEffect(() => {
+    if (activeEmotes.length === 0) return;
+    const interval = setInterval(() => {
+      setActiveEmotes((prev) =>
+        prev
+          .map((e) => ({ ...e, alpha: e.alpha - 0.04, y: e.y - 1.2 }))
+          .filter((e) => e.alpha > 0)
+      );
+    }, 40);
+    return () => clearInterval(interval);
+  }, [activeEmotes]);
+
+  // Host Room on Device 1
+  const handleHostOnline = useCallback(async () => {
+    setIsConnecting(true);
+    setConnError(null);
+    const code = PeerNetworkManager.generateRoomCode();
+    setActiveRoomCode(code);
+    setMpRole('HOST');
+    const success = await netManagerRef.current?.hostRoom(code);
+    setIsConnecting(false);
+    if (!success) {
+      setConnError('Could not create room. Please try again.');
+    }
+  }, []);
+
+  // Join Room on Device 2
+  const handleJoinOnline = useCallback(async () => {
+    if (!roomCodeInput || roomCodeInput.trim().length < 4) {
+      setConnError('Please enter the 4-letter room code from Device 1.');
+      return;
+    }
+    setIsConnecting(true);
+    setConnError(null);
+    setMpRole('GUEST');
+    const code = roomCodeInput.trim().toUpperCase();
+    setActiveRoomCode(code);
+    const success = await netManagerRef.current?.joinRoom(code);
+    if (!success) {
+      setIsConnecting(false);
+    }
+  }, [roomCodeInput]);
+
+  const copyInviteLink = () => {
+    if (typeof window === 'undefined' || !activeRoomCode) return;
+    const link = `${window.location.origin}/?room=${activeRoomCode}`;
+    navigator.clipboard.writeText(link);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2200);
+  };
+
+  // ==========================================================================
+  // COIN TOSS LOGIC (TWO-DEVICE SYNCED)
+  // ==========================================================================
+  const startToss = useCallback(
+    (broadcast: boolean = true) => {
+      setScreen('TOSS');
+      simRef.current.screen = 'TOSS';
+      setTossFlipping(false);
+      setTossWinner(null);
+      setTossDecision(null);
+
+      if (broadcast && mode === 'MULTIPLAYER' && netManagerRef.current?.isConnected()) {
+        netManagerRef.current.send({
+          type: 'TOSS_INIT',
+          payload: {
+            caller: tossCaller,
+            p1Name,
+            p2Name,
+            p1Batsman,
+            p2Batsman,
+            overs,
+          },
+        });
+      }
+    },
+    [mode, overs, p1Batsman, p1Name, p2Batsman, p2Name, tossCaller]
+  );
+
+  const flipCoin = () => {
+    audio.playCoinToss();
+    setTossFlipping(true);
+    const resultSide: 'HEADS' | 'TAILS' = Math.random() < 0.5 ? 'HEADS' : 'TAILS';
+    const won = tossCallChoice === resultSide;
+    const winner: 'P1' | 'P2' = won ? tossCaller : tossCaller === 'P1' ? 'P2' : 'P1';
+
+    if (mode === 'MULTIPLAYER') {
+      netManagerRef.current?.send({
+        type: 'TOSS_START',
+        payload: { winner, coinSide: resultSide, callChoice: tossCallChoice },
+      });
+    }
+
+    setTimeout(() => {
+      setTossFlipping(false);
+      setTossWinner(winner);
+    }, 1500);
+  };
+
+  const handleTossResultFromPeer = (
+    winner: 'P1' | 'P2',
+    _coinSide: 'HEADS' | 'TAILS',
+    callChoice?: 'HEADS' | 'TAILS'
+  ) => {
+    audio.playCoinToss();
+    if (callChoice) setTossCallChoice(callChoice);
+    setScreen('TOSS');
+    simRef.current.screen = 'TOSS';
+    setTossFlipping(true);
+    setTimeout(() => {
+      setTossFlipping(false);
+      setTossWinner(winner);
+    }, 1400);
+  };
+
+  const makeTossDecision = (decision: 'BAT' | 'BOWL') => {
+    setTossDecision(decision);
+
+    if (mode === 'MULTIPLAYER') {
+      netManagerRef.current?.send({
+        type: 'TOSS_DECISION',
+        payload: { decision },
+      });
+    }
+
+    setTimeout(() => {
+      startInnings(1, false, decision);
+    }, 900);
+  };
+
+  // ==========================================================================
+  // HUMAN BOWLING & DELIVERY RESOLUTION (TWO-DEVICE)
+  // ==========================================================================
+  const triggerBowlerChoiceWindow = useCallback(() => {
+    const s = simRef.current;
+    s.bowlerChoosing = true;
+    s.bowlerTimer = 3.0;
+    setIsBowlerChoosing(true);
+    setBowlerChoiceTimer(3.0);
+  }, []);
+
+  const applyBowlingChoice = useCallback((choice: BowlingDeliveryChoice) => {
+    const s = simRef.current;
+    s.bowlerChoosing = false;
+    setIsBowlerChoosing(false);
+
+    s.ballType = choice.variation;
+    s.ballLine = choice.line;
+    s.ballLength = choice.length;
+
+    // Delivery formulation
+    const speedMult =
+      choice.variation === 'FAST'
+        ? 1.25
+        : choice.variation === 'SLOWER'
+        ? 0.74
+        : choice.variation === 'BOUNCER'
+        ? 1.15
+        : 0.94;
+
+    s.ballSpeed = GAME_CONFIG.DIFFICULTY.BASE_BALL_SPEED * speedMult;
+    s.ballSpinCurve =
+      choice.variation === 'SPIN'
+        ? choice.line === 'OFF'
+          ? -26
+          : 26
+        : 0;
+
+    // Reset fielders to home positions and start run-up
+    s.fielders.forEach((f) => {
+      f.x = f.homeX;
+      f.y = f.homeY;
+    });
+    s.phase = 'RUNUP';
+    s.phaseTimer = 1.0;
+    s.ballProgress = 0;
+    s.swung = false;
+  }, []);
+
+  const confirmBowlingDelivery = useCallback(
+    (customVar?: BowlingVariation, customLine?: BowlingLine, customLen?: BowlingLength) => {
+      const v = customVar || bowlerVariation;
+      const l = customLine || bowlerLine;
+      const len = customLen || bowlerLength;
+
+      const choice: BowlingDeliveryChoice = {
+        variation: v,
+        line: l,
+        length: len,
+        timestamp: Date.now(),
+      };
+
+      if (simRef.current.mode === 'MULTIPLAYER') {
+        netManagerRef.current?.send({
+          type: 'BOWLING_CHOICE',
+          payload: choice,
+        });
+      }
+
+      applyBowlingChoice(choice);
+    },
+    [applyBowlingChoice, bowlerLength, bowlerLine, bowlerVariation]
+  );
+
+  // ==========================================================================
+  // START INNINGS & MATCH FLOW
+  // ==========================================================================
+  const startInnings = useCallback(
+    (inningsNum: 1 | 2, superOver: boolean = false, overrideDecision?: 'BAT' | 'BOWL') => {
       audio.init();
       const s = simRef.current;
-      const activeMode = customMode ?? mode;
-      const activeOvers = customOvers ?? overs;
-      const activeRivalIdx =
-        activeMode === 'TOURNAMENT'
-          ? sessionStats.tournamentStage
-          : customRivalIdx ?? selectedRivalIdx;
+      const activeDecision = overrideDecision || tossDecision || 'BAT';
 
-      const rival = GAME_CONFIG.RIVALS[activeRivalIdx] || GAME_CONFIG.RIVALS[0];
-      const totalBalls = activeOvers * 6;
-      const computedTarget =
-        activeMode === 'QUICK'
-          ? null
-          : Math.round(activeOvers * rival.runsPerOver + (activeMode === 'TOURNAMENT' ? activeRivalIdx * 3 : 0));
+      const totalBalls = superOver ? 1 : overs * 6;
+      setCurrentInnings(inningsNum);
+      setIsSuperOver(superOver);
 
       s.screen = 'PLAYING';
-      s.mode = activeMode;
-      s.overs = activeOvers;
-      s.rivalIdx = activeRivalIdx;
-      s.batsmanId = selectedBatsmanId;
+      s.currentInnings = inningsNum;
+      s.isSuperOver = superOver;
+      s.mode = mode;
+      s.mpRole = mpRole;
+      s.overs = overs;
       s.runs = 0;
       s.wickets = 0;
       s.balls = 0;
       s.totalBalls = totalBalls;
-      s.target = computedTarget;
       s.fours = 0;
       s.sixes = 0;
-      s.bestShot = 'Waiting for big shot...';
+      s.bestShot = 'None yet';
       s.lastBalls = [];
-
-      s.phase = 'RUNUP';
-      s.phaseTimer = 1.0;
-      s.ballType = pickNextBallType(activeRivalIdx);
-      s.ballProgress = 0;
-      s.swung = false;
-      s.batSwingAnim = 0;
       s.fielders = initFielders();
       s.particles = [];
       s.waterRipples = [];
 
-      triggerPopup(
-        [{ text: 'Kali Thudangam! Play Ball!', sub: 'കളി തുടങ്ങാം!' }],
-        '#D4AF37'
-      );
+      const targetRuns =
+        inningsNum === 2 && s.innings1Score !== null
+          ? s.innings1Score.runs + 1
+          : null;
+      s.target = targetRuns;
+
+      // Assign current batter & bowler names and traits
+      const p1Bats =
+        inningsNum === 1
+          ? tossWinner === 'P1'
+            ? activeDecision === 'BAT'
+            : activeDecision === 'BOWL'
+          : !(tossWinner === 'P1' ? activeDecision === 'BAT' : activeDecision === 'BOWL');
+
+      s.battingPlayerName = p1Bats ? p1Name : p2Name;
+      s.bowlingPlayerName = p1Bats ? p2Name : p1Name;
+      s.batsmanId = p1Bats ? p1Batsman : p2Batsman;
+      s.isLocalPlayerBatting =
+        mode !== 'MULTIPLAYER' || (mpRole === 'HOST' ? p1Bats : !p1Bats);
+      s.isLocalPlayerBowling =
+        mode === 'MULTIPLAYER' && (mpRole === 'HOST' ? !p1Bats : p1Bats);
 
       setScreen('PLAYING');
       setHud({
@@ -792,34 +1297,200 @@ export default function GullyKeralaGame() {
         wickets: 0,
         balls: 0,
         totalBalls,
-        target: computedTarget,
+        target: targetRuns,
         fours: 0,
         sixes: 0,
         bestShot: 'None yet',
-        bowlerType: s.ballType,
-        popupText: s.popupText,
-        popupSub: s.popupSub,
-        popupColor: s.popupColor,
+        bowlerType: 'FAST',
+        popupText: superOver
+          ? 'Super Over! 1 Ball Each!'
+          : inningsNum === 1
+          ? 'Innings 1 Begins!'
+          : `Target: ${targetRuns} Runs!`,
+        popupSub: `${s.battingPlayerName} is Batting`,
+        popupColor: '#D4AF37',
         lastBalls: [],
         matchResultTitle: '',
         matchWon: false,
         villageTitle: 'Padam Contender',
+        loserTitle: '',
+        winnerName: '',
+        loserName: '',
       });
+
+      triggerPopup(
+        [
+          {
+            text: superOver
+              ? 'Super Over! 1 Ball Thriller!'
+              : inningsNum === 1
+              ? 'Innings 1! Set the Target!'
+              : `Chase On! Need ${targetRuns} Runs!`,
+            sub: `${s.battingPlayerName} to Bat!`,
+          },
+        ],
+        '#D4AF37'
+      );
+
+      // Start human bowling selection if multiplayer, else AI bowler
+      if (mode === 'MULTIPLAYER') {
+        triggerBowlerChoiceWindow();
+      } else {
+        s.phase = 'RUNUP';
+        s.phaseTimer = 1.0;
+        s.ballType = 'FAST';
+        s.ballProgress = 0;
+        s.swung = false;
+      }
     },
-    [initFielders, mode, overs, pickNextBallType, selectedBatsmanId, selectedRivalIdx, sessionStats.tournamentStage]
+    [initFielders, mode, mpRole, overs, p1Batsman, p1Name, p2Batsman, p2Name, tossDecision, tossWinner, triggerBowlerChoiceWindow]
   );
 
-  const computeVillageTitle = (runs: number, sixes: number, wickets: number) => {
-    if (sixes >= 4 || runs >= 48) return 'Padam King (പാടം രാജാവ്)';
-    if (runs >= 30) return 'Chayakada Champion (ചായക്കട ചാമ്പ്യൻ)';
-    if (runs >= 16) return 'Kuttanad Striker (കുട്ടനാട് സ്ട്രൈക്കർ)';
-    if (wickets >= GAME_CONFIG.MAX_WICKETS && runs < 8) return 'Kayal Swimmer (കായൽ നീന്തൽക്കാരൻ)';
-    return 'Ulsavam All-Rounder (ഉത്സവം താരം)';
-  };
+  const startMatch = useCallback(
+    (customMode?: GameMode) => {
+      const activeMode = customMode || mode;
+      if (activeMode === 'MULTIPLAYER') {
+        startToss(true);
+      } else {
+        // Single player standard match
+        audio.init();
+        const s = simRef.current;
+        s.screen = 'PLAYING';
+        s.mode = activeMode;
+        s.isLocalPlayerBatting = true;
+        s.isLocalPlayerBowling = false;
+        s.overs = overs;
+        s.rivalIdx = selectedRivalIdx;
+        s.batsmanId = selectedBatsmanId;
+        s.runs = 0;
+        s.wickets = 0;
+        s.balls = 0;
+        s.totalBalls = overs * 6;
+        s.target = activeMode === 'QUICK' ? null : Math.round(overs * (GAME_CONFIG.RIVALS[selectedRivalIdx]?.runsPerOver || 12));
+        s.fours = 0;
+        s.sixes = 0;
+        s.bestShot = 'Classic Village Drive';
+        s.lastBalls = [];
+        s.fielders = initFielders();
+        s.particles = [];
+        s.waterRipples = [];
 
+        s.phase = 'RUNUP';
+        s.phaseTimer = 1.0;
+        s.ballType = 'FAST';
+        s.ballProgress = 0;
+        s.swung = false;
+
+        setScreen('PLAYING');
+        setHud({
+          runs: 0,
+          wickets: 0,
+          balls: 0,
+          totalBalls: overs * 6,
+          target: s.target,
+          fours: 0,
+          sixes: 0,
+          bestShot: 'None yet',
+          bowlerType: s.ballType,
+          popupText: 'Kali Thudangam! Play Ball!',
+          popupSub: 'കളി തുടങ്ങാം!',
+          popupColor: '#D4AF37',
+          lastBalls: [],
+          matchResultTitle: '',
+          matchWon: false,
+          villageTitle: 'Padam Contender',
+          loserTitle: '',
+          winnerName: '',
+          loserName: '',
+        });
+      }
+    },
+    [initFielders, mode, overs, selectedBatsmanId, selectedRivalIdx, startToss]
+  );
+
+  // Multiplayer Innings End Handler
+  const handleMultiplayerInningsEnd = useCallback(() => {
+    const s = simRef.current;
+    const currentScorecard: InningsScorecard = {
+      battingPlayer: s.battingPlayerName,
+      bowlingPlayer: s.bowlingPlayerName,
+      runs: s.runs,
+      wickets: s.wickets,
+      balls: s.balls,
+      totalBalls: s.totalBalls,
+      fours: s.fours,
+      sixes: s.sixes,
+      bestShot: s.bestShot,
+      lastBalls: s.lastBalls,
+    };
+
+    if (s.currentInnings === 1 && !s.isSuperOver) {
+      // Innings 1 Complete -> Go to Innings Break
+      s.innings1Score = currentScorecard;
+      setInnings1Score(currentScorecard);
+      s.screen = 'INNINGS_BREAK';
+      setScreen('INNINGS_BREAK');
+    } else {
+      // Innings 2 Complete or Super Over complete -> Resolve Winner
+      setInnings2Score(currentScorecard);
+      const inn1 = s.innings1Score!;
+      const inn2 = currentScorecard;
+
+      if (inn2.runs === inn1.runs) {
+        // TIE -> One-ball Super Over!
+        triggerPopup([{ text: 'MATCH TIED! SUPER OVER!', sub: 'സമനില! സൂപ്പർ ഓവർ!' }], '#FACC15');
+        setTimeout(() => {
+          startInnings(1, true);
+        }, 1800);
+        return;
+      }
+
+      const p2Won = inn2.runs >= inn1.runs + 1;
+      const winnerName = p2Won ? inn2.battingPlayer : inn1.battingPlayer;
+      const loserName = p2Won ? inn1.battingPlayer : inn2.battingPlayer;
+
+      const vTitle = p2Won ? 'Padam King (പാടം രാജാവ്)' : 'Chayakada Champion (ചായക്കട ചാമ്പ്യൻ)';
+      const lTitle = 'Kayalil Poyi Award (കായലിൽ പോയി അവാർഡ്)';
+
+      // Update series score
+      setSeriesScore((prev) => {
+        const p1WonMatch = winnerName === p1Name;
+        return {
+          p1Wins: prev.p1Wins + (p1WonMatch ? 1 : 0),
+          p2Wins: prev.p2Wins + (p1WonMatch ? 0 : 1),
+        };
+      });
+
+      s.screen = 'SUMMARY';
+      setScreen('SUMMARY');
+      setHud((prev) => ({
+        ...prev,
+        matchResultTitle: `${winnerName} Wins the Match!`,
+        winnerName,
+        loserName,
+        villageTitle: vTitle,
+        loserTitle: lTitle,
+      }));
+    }
+  }, [p1Name, startInnings]);
+
+  // Delivery Outcome Resolution (Synced across Both Devices)
   const resolveDeliveryOutcome = useCallback(
-    (runsScored: number, isOut: boolean, badge: string, shotDesc?: string) => {
+    (
+      runsScored: number,
+      isOut: boolean,
+      badge: string,
+      shotDesc?: string,
+      fromNetwork: boolean = false,
+      targetBallNumber?: number
+    ) => {
       const s = simRef.current;
+
+      // Guard against duplicate outcome resolution for the same delivery
+      if (targetBallNumber !== undefined && s.balls >= targetBallNumber) {
+        return;
+      }
+
       s.runs += runsScored;
       if (isOut) s.wickets += 1;
       s.balls += 1;
@@ -828,75 +1499,66 @@ export default function GullyKeralaGame() {
       if (shotDesc) s.bestShot = shotDesc;
       s.lastBalls = [...s.lastBalls.slice(-7), badge];
 
+      // Broadcast authoritative ball outcome to peer device
+      if (s.mode === 'MULTIPLAYER' && !fromNetwork) {
+        netManagerRef.current?.send({
+          type: 'BALL_RESULT',
+          payload: {
+            ballNumber: s.balls,
+            runsScored,
+            isOut,
+            badge,
+            shotDesc,
+            popupText: s.popupText,
+            popupSub: s.popupSub,
+            popupColor: s.popupColor,
+          },
+        });
+      }
+
+      // Check Innings End
       const chasedTarget = s.target !== null && s.runs >= s.target;
       const allOut = s.wickets >= GAME_CONFIG.MAX_WICKETS;
       const oversDone = s.balls >= s.totalBalls;
 
       if (chasedTarget || allOut || oversDone) {
-        const won = s.target === null ? s.runs >= s.overs * 10 : s.runs >= s.target;
-        const vTitle = computeVillageTitle(s.runs, s.sixes, s.wickets);
-        const resultLabel =
-          s.target === null
-            ? `Innings Complete! Scored ${s.runs}/${s.wickets}`
-            : won
-            ? `Adipoli Victory! Target Chased!`
-            : `Fallen Short by ${s.target - s.runs} Runs`;
-
-        setSessionStats((prev) => {
-          const newHigh = Math.max(prev.highScore, s.runs);
-          const newUnlocked = new Set(prev.unlockedIds);
-          if (newHigh >= 20 || s.runs >= 20) newUnlocked.add('appu');
-          if (newHigh >= 40 || s.runs >= 40 || won) newUnlocked.add('ammachi');
-
-          let nextStage = prev.tournamentStage;
-          if (s.mode === 'TOURNAMENT') {
-            if (won) {
-              nextStage = (prev.tournamentStage + 1) % 3;
-            } else {
-              nextStage = 0;
-            }
-          }
-
-          return {
-            highScore: newHigh,
-            matchesWon: prev.matchesWon + (won ? 1 : 0),
-            unlockedIds: Array.from(newUnlocked),
-            tournamentStage: nextStage,
-          };
-        });
-
-        s.screen = 'SUMMARY';
-        setScreen('SUMMARY');
-        setHud({
-          runs: s.runs,
-          wickets: s.wickets,
-          balls: s.balls,
-          totalBalls: s.totalBalls,
-          target: s.target,
-          fours: s.fours,
-          sixes: s.sixes,
-          bestShot: s.bestShot,
-          bowlerType: s.ballType,
-          popupText: s.popupText,
-          popupSub: s.popupSub,
-          popupColor: s.popupColor,
-          lastBalls: s.lastBalls,
-          matchResultTitle: resultLabel,
-          matchWon: won,
-          villageTitle: vTitle,
-        });
+        if (s.mode === 'MULTIPLAYER') {
+          handleMultiplayerInningsEnd();
+        } else {
+          // Single player match complete
+          const won = s.target === null ? s.runs >= s.overs * 10 : s.runs >= s.target;
+          s.screen = 'SUMMARY';
+          setScreen('SUMMARY');
+          setHud((prev) => ({
+            ...prev,
+            runs: s.runs,
+            wickets: s.wickets,
+            balls: s.balls,
+            fours: s.fours,
+            sixes: s.sixes,
+            bestShot: s.bestShot,
+            matchResultTitle: won ? 'Adipoli Victory!' : 'Fallen Short!',
+            matchWon: won,
+            villageTitle: s.runs > 35 ? 'Padam King (പാടം രാജാവ്)' : 'Chayakada Champion',
+          }));
+        }
         return;
       }
 
-      s.phase = 'RUNUP';
-      s.phaseTimer = 1.25;
-      s.ballType = pickNextBallType(s.rivalIdx);
-      s.ballProgress = 0;
-      s.swung = false;
-      s.fielders.forEach((f) => {
-        f.x = f.homeX;
-        f.y = f.homeY;
-      });
+      // Prepare next ball
+      if (s.mode === 'MULTIPLAYER') {
+        triggerBowlerChoiceWindow();
+      } else {
+        s.phase = 'RUNUP';
+        s.phaseTimer = 1.1;
+        s.ballType = (['FAST', 'SPIN', 'SLOWER', 'BOUNCER'] as BallType[])[Math.floor(Math.random() * 4)];
+        s.ballProgress = 0;
+        s.swung = false;
+        s.fielders.forEach((f) => {
+          f.x = f.homeX;
+          f.y = f.homeY;
+        });
+      }
 
       setHud((prev) => ({
         ...prev,
@@ -913,76 +1575,195 @@ export default function GullyKeralaGame() {
         lastBalls: s.lastBalls,
       }));
     },
-    [pickNextBallType]
+    [handleMultiplayerInningsEnd, triggerBowlerChoiceWindow]
+  );
+
+  const startRematch = () => {
+    setTossCaller((prev) => (prev === 'P1' ? 'P2' : 'P1'));
+    if (netManagerRef.current?.isConnected()) {
+      netManagerRef.current.send({ type: 'REMATCH' });
+    }
+    startToss(false);
+  };
+
+  // Deterministic Batter Swing Execution (Identical Trajectory on Both Devices)
+  const executeSwingAction = useCallback(
+    (dir: AimDirection, overrideProgress?: number, deterministicSeed?: number) => {
+      const s = simRef.current;
+      if (s.screen !== 'PLAYING') return;
+      if (s.swung) return;
+
+      if (overrideProgress !== undefined) {
+        s.phase = 'BOWLING';
+        s.ballProgress = overrideProgress;
+      } else if (s.phase !== 'BOWLING') {
+        return;
+      }
+
+      s.swung = true;
+      s.batSwingAnim = 1.0;
+
+      const r1 = deterministicSeed !== undefined ? deterministicSeed : Math.random();
+      const r2 = ((r1 * 9301 + 49297) % 233280) / 233280;
+      const r3 = ((r2 * 9301 + 49297) % 233280) / 233280;
+
+      const batsman = GAME_CONFIG.BATSMEN.find((b) => b.id === s.batsmanId) || GAME_CONFIG.BATSMEN[0];
+      const delta = s.ballProgress - GAME_CONFIG.DIFFICULTY.SWEET_SPOT;
+      const absDelta = Math.abs(delta);
+
+      const perfWin = GAME_CONFIG.DIFFICULTY.PERFECT_WINDOW * batsman.timingMult;
+      const goodWin = GAME_CONFIG.DIFFICULTY.GOOD_WINDOW * batsman.timingMult;
+      const edgeWin = GAME_CONFIG.DIFFICULTY.EDGE_WINDOW * batsman.timingMult;
+
+      const baseAngle =
+        dir === -1
+          ? -Math.PI * 0.76
+          : dir === 1
+          ? -Math.PI * 0.24
+          : -Math.PI * 0.5;
+
+      const timingSkew = delta * 1.9;
+      const shotAngle = baseAngle + timingSkew;
+      const isLuckyMiracle = absDelta <= edgeWin && absDelta > perfWin && r1 < batsman.luckyChance;
+
+      if (absDelta <= perfWin || isLuckyMiracle) {
+        audio.playBatHit('PERFECT');
+        s.hitStopTimer = 0.055;
+        s.shakeIntensity = 8;
+        s.phase = 'HIT_FLIGHT';
+
+        const power = (285 + r2 * 55) * batsman.powerMult;
+        s.ball.vx = Math.cos(shotAngle) * power;
+        s.ball.vy = Math.sin(shotAngle) * power;
+        s.ball.vz = 195 + r3 * 45;
+        s.ball.bounces = 0;
+
+        spawnParticles(s.ball.x, s.ball.y, 20, '#D4AF37', 20, 1.1);
+      } else if (absDelta <= goodWin) {
+        audio.playBatHit('GOOD');
+        s.hitStopTimer = 0.025;
+        s.shakeIntensity = 3.5;
+        s.phase = 'HIT_FLIGHT';
+
+        const power = (185 + r2 * 45) * batsman.powerMult;
+        s.ball.vx = Math.cos(shotAngle) * power;
+        s.ball.vy = Math.sin(shotAngle) * power;
+        s.ball.vz = 85 + r3 * 55;
+        s.ball.bounces = 0;
+
+        spawnParticles(s.ball.x, s.ball.y, 16, '#D6D3D1', 10, 0.8);
+      } else if (absDelta <= edgeWin) {
+        audio.playBatHit('EDGE');
+        s.phase = 'HIT_FLIGHT';
+
+        const edgeAngle = -Math.PI * (0.25 + r1 * 0.5);
+        const power = 110 + r2 * 55;
+        s.ball.vx = Math.cos(edgeAngle) * power;
+        s.ball.vy = Math.sin(edgeAngle) * power;
+        s.ball.vz = 155 + r3 * 40;
+        s.ball.bounces = 0;
+      } else {
+        audio.playBatHit('MISS');
+      }
+    },
+    []
   );
 
   const handleSwing = useCallback(() => {
+    if (!isLocalPlayerBatting) return;
     const s = simRef.current;
-    if (s.screen !== 'PLAYING') return;
     if (s.phase !== 'BOWLING' || s.swung) return;
 
-    s.swung = true;
-    s.batSwingAnim = 1.0;
+    const swingProgress = s.ballProgress;
+    const seed = Math.random();
+    executeSwingAction(s.aimDir, swingProgress, seed);
 
-    const batsman = GAME_CONFIG.BATSMEN.find((b) => b.id === s.batsmanId) || GAME_CONFIG.BATSMEN[0];
-    const delta = s.ballProgress - GAME_CONFIG.DIFFICULTY.SWEET_SPOT;
-    const absDelta = Math.abs(delta);
-
-    const perfWin = GAME_CONFIG.DIFFICULTY.PERFECT_WINDOW * batsman.timingMult;
-    const goodWin = GAME_CONFIG.DIFFICULTY.GOOD_WINDOW * batsman.timingMult;
-    const edgeWin = GAME_CONFIG.DIFFICULTY.EDGE_WINDOW * batsman.timingMult;
-
-    const baseAngle =
-      s.aimDir === -1
-        ? -Math.PI * 0.76
-        : s.aimDir === 1
-        ? -Math.PI * 0.24
-        : -Math.PI * 0.5;
-
-    const timingSkew = delta * 1.9;
-    const shotAngle = baseAngle + timingSkew;
-    const isLuckyMiracle = absDelta <= edgeWin && absDelta > perfWin && Math.random() < batsman.luckyChance;
-
-    if (absDelta <= perfWin || isLuckyMiracle) {
-      audio.playBatHit('PERFECT');
-      s.hitStopTimer = 0.055;
-      s.shakeIntensity = 8;
-      s.phase = 'HIT_FLIGHT';
-
-      const power = (285 + Math.random() * 55) * batsman.powerMult;
-      s.ball.vx = Math.cos(shotAngle) * power;
-      s.ball.vy = Math.sin(shotAngle) * power;
-      s.ball.vz = 195 + Math.random() * 45;
-      s.ball.bounces = 0;
-
-      spawnParticles(s.ball.x, s.ball.y, 20, '#D4AF37', 20, 1.1);
-    } else if (absDelta <= goodWin) {
-      audio.playBatHit('GOOD');
-      s.hitStopTimer = 0.025;
-      s.shakeIntensity = 3.5;
-      s.phase = 'HIT_FLIGHT';
-
-      const power = (185 + Math.random() * 45) * batsman.powerMult;
-      s.ball.vx = Math.cos(shotAngle) * power;
-      s.ball.vy = Math.sin(shotAngle) * power;
-      s.ball.vz = 85 + Math.random() * 55;
-      s.ball.bounces = 0;
-
-      spawnParticles(s.ball.x, s.ball.y, 16, '#D6D3D1', 10, 0.8);
-    } else if (absDelta <= edgeWin) {
-      audio.playBatHit('EDGE');
-      s.phase = 'HIT_FLIGHT';
-
-      const edgeAngle = -Math.PI * (0.25 + Math.random() * 0.5);
-      const power = 110 + Math.random() * 55;
-      s.ball.vx = Math.cos(edgeAngle) * power;
-      s.ball.vy = Math.sin(edgeAngle) * power;
-      s.ball.vz = 155 + Math.random() * 40;
-      s.ball.bounces = 0;
-    } else {
-      audio.playBatHit('MISS');
+    if (mode === 'MULTIPLAYER') {
+      netManagerRef.current?.send({
+        type: 'BATTER_SWING',
+        payload: { dir: s.aimDir, ballProgress: swingProgress, seed },
+      });
     }
-  }, []);
+  }, [executeSwingAction, isLocalPlayerBatting, mode]);
+
+  // Sync latest message handler dynamically
+  useEffect(() => {
+    peerMessageHandlerRef.current = (msg: PeerMessage) => {
+      if (msg.type === 'LOBBY_STATE') {
+        const d = msg.payload;
+        if (d.p1Name) setP1Name(d.p1Name);
+        if (d.p1Batsman) setP1Batsman(d.p1Batsman);
+        if (d.overs) setOvers(d.overs);
+        if (d.timeOfDay) setTimeOfDay(d.timeOfDay);
+        if (typeof d.isMonsoon === 'boolean') setIsMonsoon(d.isMonsoon);
+      } else if (msg.type === 'GUEST_PROFILE') {
+        const d = msg.payload;
+        if (d.p2Name) setP2Name(d.p2Name);
+        if (d.p2Batsman) setP2Batsman(d.p2Batsman);
+      } else if (msg.type === 'TOSS_INIT') {
+        const d = msg.payload;
+        if (d.caller) setTossCaller(d.caller);
+        if (d.p1Name) setP1Name(d.p1Name);
+        if (d.p2Name) setP2Name(d.p2Name);
+        if (d.p1Batsman) setP1Batsman(d.p1Batsman);
+        if (d.p2Batsman) setP2Batsman(d.p2Batsman);
+        if (d.overs) setOvers(d.overs);
+        startToss(false);
+      } else if (msg.type === 'TOSS_START') {
+        handleTossResultFromPeer(
+          msg.payload.winner,
+          msg.payload.coinSide,
+          msg.payload.callChoice
+        );
+      } else if (msg.type === 'TOSS_DECISION') {
+        setTossDecision(msg.payload.decision);
+        setTimeout(() => startInnings(1, false, msg.payload.decision), 900);
+      } else if (msg.type === 'BOWLING_CHOICE') {
+        applyBowlingChoice(msg.payload);
+      } else if (msg.type === 'BATTER_SWING') {
+        executeSwingAction(
+          msg.payload.dir,
+          msg.payload.ballProgress,
+          msg.payload.seed
+        );
+      } else if (msg.type === 'BALL_RESULT') {
+        const d = msg.payload;
+        if (d.popupText) {
+          simRef.current.popupText = d.popupText;
+          simRef.current.popupSub = d.popupSub || '';
+          simRef.current.popupColor = d.popupColor || '#D4AF37';
+          simRef.current.popupTimer = 2.0;
+        }
+        resolveDeliveryOutcome(
+          d.runsScored,
+          d.isOut,
+          d.badge,
+          d.shotDesc,
+          true,
+          d.ballNumber
+        );
+      } else if (msg.type === 'START_INNINGS_2') {
+        startInnings(2);
+      } else if (msg.type === 'EMOTE') {
+        const { text, sender, color } = msg.payload;
+        setActiveEmotes((prev) => [
+          ...prev.slice(-4),
+          {
+            id: `${Date.now()}-${Math.random()}`,
+            text,
+            sender,
+            x: window.innerWidth * (0.35 + Math.random() * 0.3),
+            y: window.innerHeight * 0.45,
+            alpha: 1.0,
+            color: color || '#EAB308',
+          },
+        ]);
+      } else if (msg.type === 'REMATCH') {
+        setTossCaller((prev) => (prev === 'P1' ? 'P2' : 'P1'));
+        startToss(false);
+      }
+    };
+  });
 
   // Keyboard Listeners
   useEffect(() => {
@@ -1023,12 +1804,15 @@ export default function GullyKeralaGame() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [handleSwing, startMatch]);
 
-  // Sync toggles into simulation ref & mark offscreen static background dirty
+  // Sync state into simRef
   useEffect(() => {
     simRef.current.timeOfDay = timeOfDay;
     simRef.current.isMonsoon = isMonsoon;
     simRef.current.batsmanId = selectedBatsmanId;
     simRef.current.mode = mode;
+    simRef.current.mpRole = mpRole;
+    simRef.current.isLocalPlayerBatting = isLocalPlayerBatting;
+    simRef.current.isLocalPlayerBowling = isLocalPlayerBowling;
     simRef.current.overs = overs;
     simRef.current.rivalIdx = selectedRivalIdx;
     bgDirtyRef.current = true;
@@ -1045,790 +1829,332 @@ export default function GullyKeralaGame() {
       }
       simRef.current.rain = drops;
     }
-  }, [timeOfDay, isMonsoon, selectedBatsmanId, mode, overs, selectedRivalIdx]);
+  }, [timeOfDay, isMonsoon, selectedBatsmanId, mode, mpRole, isLocalPlayerBatting, isLocalPlayerBowling, overs, selectedRivalIdx]);
 
   // ==========================================================================
-  // 6. OFFSCREEN STATIC ENVIRONMENT RENDERER (CALLED ONLY ON RESIZE / LIGHTING CHANGE)
+  // OFFSCREEN STATIC ENVIRONMENT RENDERER (BLITTED FOR 60FPS)
   // ==========================================================================
-  const renderStaticEnvironment = useCallback(
-    (W: number, H: number) => {
-      if (!bgCanvasRef.current) {
-        bgCanvasRef.current = document.createElement('canvas');
-      }
-      const bgCanvas = bgCanvasRef.current;
-      bgCanvas.width = W;
-      bgCanvas.height = H;
-      const ctx = bgCanvas.getContext('2d');
-      if (!ctx) return;
+  const renderStaticEnvironment = useCallback((W: number, H: number) => {
+    if (!bgCanvasRef.current) {
+      bgCanvasRef.current = document.createElement('canvas');
+    }
+    const bgCanvas = bgCanvasRef.current;
+    bgCanvas.width = W;
+    bgCanvas.height = H;
+    const ctx = bgCanvas.getContext('2d');
+    if (!ctx) return;
 
-      const s = simRef.current;
-      const palette = s.isMonsoon
-        ? GAME_CONFIG.COLORS.MONSOON
-        : s.timeOfDay === 'EVENING'
-        ? GAME_CONFIG.COLORS.EVENING
-        : GAME_CONFIG.COLORS.DAY;
+    const s = simRef.current;
+    const palette = s.isMonsoon
+      ? GAME_CONFIG.COLORS.MONSOON
+      : s.timeOfDay === 'EVENING'
+      ? GAME_CONFIG.COLORS.EVENING
+      : GAME_CONFIG.COLORS.DAY;
 
-      // Gentler Elevated Broadcast Camera Projection (Pitch runs vertically, no extreme tilt)
-      const scale = Math.min(W / 900, H / 640);
-      const cx = W * 0.51;
-      const cy = H * 0.57;
+    const scale = Math.min(W / 900, H / 640);
+    const cx = W * 0.51;
+    const cy = H * 0.57;
 
-      const toScreen = (wx: number, wy: number, wz: number = 0) => {
-        // Gentle perspective foreshortening so pitch runs vertically and fielders stay proportionate
-        const depthFactor = 1 + wy * 0.00055;
-        const rx = wx * depthFactor;
-        const ry = wy * 0.78 - wz * 0.92;
-        return {
-          x: cx + rx * scale,
-          y: cy + ry * scale,
-        };
+    const toScreen = (wx: number, wy: number, wz: number = 0) => {
+      const depthFactor = 1 + wy * 0.00055;
+      const rx = wx * depthFactor;
+      const ry = wy * 0.78 - wz * 0.92;
+      return {
+        x: cx + rx * scale,
+        y: cy + ry * scale,
       };
+    };
 
-      // ----------------------------------------------------------------------
-      // LAYER 1: ATMOSPHERIC SKY GRADIENT & LAYERED WESTERN GHATS HILLS
-      // ----------------------------------------------------------------------
-      const skyGrad = ctx.createLinearGradient(0, 0, 0, H * 0.34);
-      skyGrad.addColorStop(0, palette.skyTop);
-      skyGrad.addColorStop(0.55, palette.skyMid);
-      skyGrad.addColorStop(1, palette.skyHorizon);
-      ctx.fillStyle = skyGrad;
-      ctx.fillRect(0, 0, W, H * 0.35);
+    // Sky & Western Ghats Foothills
+    const skyGrad = ctx.createLinearGradient(0, 0, 0, H * 0.34);
+    skyGrad.addColorStop(0, palette.skyTop);
+    skyGrad.addColorStop(0.55, palette.skyMid);
+    skyGrad.addColorStop(1, palette.skyHorizon);
+    ctx.fillStyle = skyGrad;
+    ctx.fillRect(0, 0, W, H * 0.35);
 
-      // Soft glowing sun / evening orb near horizon
-      if (!s.isMonsoon) {
-        const sunX = W * (s.timeOfDay === 'EVENING' ? 0.25 : 0.78);
-        const sunY = H * 0.16;
-        const sunGrad = ctx.createRadialGradient(sunX, sunY, 4 * scale, sunX, sunY, 95 * scale);
-        sunGrad.addColorStop(0, s.timeOfDay === 'EVENING' ? 'rgba(253, 186, 116, 0.85)' : 'rgba(254, 249, 195, 0.85)');
-        sunGrad.addColorStop(1, 'rgba(254, 249, 195, 0)');
-        ctx.fillStyle = sunGrad;
-        ctx.beginPath();
-        ctx.arc(sunX, sunY, 95 * scale, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      // Far Hazy Western Ghats Mountain Ridge
-      ctx.fillStyle = palette.distantHills;
+    if (!s.isMonsoon) {
+      const sunX = W * (s.timeOfDay === 'EVENING' ? 0.25 : 0.78);
+      const sunY = H * 0.16;
+      const sunGrad = ctx.createRadialGradient(sunX, sunY, 4 * scale, sunX, sunY, 95 * scale);
+      sunGrad.addColorStop(0, s.timeOfDay === 'EVENING' ? 'rgba(253, 186, 116, 0.85)' : 'rgba(254, 249, 195, 0.85)');
+      sunGrad.addColorStop(1, 'rgba(254, 249, 195, 0)');
+      ctx.fillStyle = sunGrad;
       ctx.beginPath();
-      ctx.moveTo(0, H * 0.24);
-      ctx.bezierCurveTo(W * 0.18, H * 0.14, W * 0.36, H * 0.21, W * 0.54, H * 0.16);
-      ctx.bezierCurveTo(W * 0.72, H * 0.11, W * 0.88, H * 0.19, W, H * 0.15);
-      ctx.lineTo(W, H * 0.36);
-      ctx.lineTo(0, H * 0.36);
-      ctx.closePath();
+      ctx.arc(sunX, sunY, 95 * scale, 0, Math.PI * 2);
       ctx.fill();
+    }
 
-      // Morning / Evening Mist band between hills
-      const mistGrad = ctx.createLinearGradient(0, H * 0.18, 0, H * 0.28);
-      mistGrad.addColorStop(0, 'rgba(254, 243, 199, 0)');
-      mistGrad.addColorStop(0.5, s.isMonsoon ? 'rgba(203, 213, 225, 0.28)' : 'rgba(254, 243, 199, 0.26)');
-      mistGrad.addColorStop(1, 'rgba(254, 243, 199, 0)');
-      ctx.fillStyle = mistGrad;
-      ctx.fillRect(0, H * 0.17, W, H * 0.12);
+    ctx.fillStyle = palette.distantHills;
+    ctx.beginPath();
+    ctx.moveTo(0, H * 0.24);
+    ctx.bezierCurveTo(W * 0.18, H * 0.14, W * 0.36, H * 0.21, W * 0.54, H * 0.16);
+    ctx.bezierCurveTo(W * 0.72, H * 0.11, W * 0.88, H * 0.19, W, H * 0.15);
+    ctx.lineTo(W, H * 0.36);
+    ctx.lineTo(0, H * 0.36);
+    ctx.closePath();
+    ctx.fill();
 
-      // Closer Rolling Green Foothills & Distant Palm Treeline Silhouette
-      ctx.fillStyle = palette.midHills;
+    const mistGrad = ctx.createLinearGradient(0, H * 0.18, 0, H * 0.28);
+    mistGrad.addColorStop(0, 'rgba(254, 243, 199, 0)');
+    mistGrad.addColorStop(0.5, s.isMonsoon ? 'rgba(203, 213, 225, 0.28)' : 'rgba(254, 243, 199, 0.26)');
+    mistGrad.addColorStop(1, 'rgba(254, 243, 199, 0)');
+    ctx.fillStyle = mistGrad;
+    ctx.fillRect(0, H * 0.17, W, H * 0.12);
+
+    ctx.fillStyle = palette.midHills;
+    ctx.beginPath();
+    ctx.moveTo(0, H * 0.26);
+    ctx.quadraticCurveTo(W * 0.28, H * 0.2, W * 0.55, H * 0.25);
+    ctx.quadraticCurveTo(W * 0.82, H * 0.21, W, H * 0.26);
+    ctx.lineTo(W, H);
+    ctx.lineTo(0, H);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = s.timeOfDay === 'EVENING' ? '#142214' : '#264015';
+    for (let i = 0; i < 38; i++) {
+      const tx = (i / 37) * W;
+      const ty = H * (0.235 + Math.sin(i * 0.7) * 0.012);
+      const r = (10 + (i % 4) * 4) * scale;
       ctx.beginPath();
-      ctx.moveTo(0, H * 0.26);
-      ctx.quadraticCurveTo(W * 0.28, H * 0.2, W * 0.55, H * 0.25);
-      ctx.quadraticCurveTo(W * 0.82, H * 0.21, W, H * 0.26);
-      ctx.lineTo(W, H);
-      ctx.lineTo(0, H);
-      ctx.closePath();
+      ctx.arc(tx, ty, r, Math.PI, 0);
       ctx.fill();
+    }
 
-      // Distant Treeline Silhouettes along Horizon
-      ctx.fillStyle = s.timeOfDay === 'EVENING' ? '#142214' : '#264015';
-      for (let i = 0; i < 38; i++) {
-        const tx = (i / 37) * W;
-        const ty = H * (0.235 + Math.sin(i * 0.7) * 0.012);
-        const r = (10 + (i % 4) * 4) * scale;
-        ctx.beginPath();
-        ctx.arc(tx, ty, r, Math.PI, 0);
-        ctx.fill();
-      }
+    // Harvested Paddy Ground & Noise Patches
+    ctx.fillStyle = palette.padamBase;
+    ctx.fillRect(0, H * 0.24, W, H * 0.76);
 
-      // ----------------------------------------------------------------------
-      // LAYER 2: HARVESTED PADDY FIELD ("PADAM") BASE & ORGANIC NOISE TEXTURE
-      // ----------------------------------------------------------------------
-      ctx.fillStyle = palette.padamBase;
-      ctx.fillRect(0, H * 0.24, W, H * 0.76);
+    const padamPoly = [
+      [-210, -250],
+      [-85, -275],
+      [65, -268],
+      [185, -238],
+      [248, -145],
+      [262, -20],
+      [238, 115],
+      [175, 205],
+      [45, 235],
+      [-115, 222],
+      [-195, 145],
+      [-218, 15],
+      [-208, -125],
+    ];
 
-      // Irregular, organic harvested paddy ground shape (NOT a stadium oval!)
-      const padamPoly = [
-        [-210, -250],
-        [-85, -275],
-        [65, -268],
-        [185, -238],
-        [248, -145],
-        [262, -20],
-        [238, 115],
-        [175, 205],
-        [45, 235],
-        [-115, 222],
-        [-195, 145],
-        [-218, 15],
-        [-208, -125],
-      ];
+    ctx.save();
+    ctx.beginPath();
+    padamPoly.forEach(([px, py], idx) => {
+      const pt = toScreen(px, py, 0);
+      if (idx === 0) ctx.moveTo(pt.x, pt.y);
+      else ctx.lineTo(pt.x, pt.y);
+    });
+    ctx.closePath();
+    ctx.fillStyle = palette.padamDry;
+    ctx.fill();
+    ctx.clip();
+
+    const patchColors = [
+      palette.padamGreen,
+      palette.padamBase,
+      palette.padamSoil,
+      '#5F6F3A',
+      '#786B4D',
+      '#4B5828',
+    ];
+    for (let i = 0; i < 240; i++) {
+      const rx = (seededRandom(i * 3.1) - 0.5) * 520;
+      const ry = (seededRandom(i * 7.3) - 0.5) * 520;
+      const rw = (18 + seededRandom(i * 11.7) * 55) * scale;
+      const rh = (10 + seededRandom(i * 17.9) * 28) * scale;
+      const angle = seededRandom(i * 5.5) * Math.PI;
+      const pt = toScreen(rx, ry, 0);
 
       ctx.save();
+      ctx.translate(pt.x, pt.y);
+      ctx.rotate(angle);
+      ctx.fillStyle = patchColors[i % patchColors.length];
+      ctx.globalAlpha = 0.35 + seededRandom(i * 2.3) * 0.35;
       ctx.beginPath();
-      padamPoly.forEach(([px, py], idx) => {
-        const pt = toScreen(px, py, 0);
-        if (idx === 0) ctx.moveTo(pt.x, pt.y);
-        else ctx.lineTo(pt.x, pt.y);
-      });
-      ctx.closePath();
-      ctx.fillStyle = palette.padamDry;
+      ctx.ellipse(0, 0, rw, rh, 0, 0, Math.PI * 2);
       ctx.fill();
-      ctx.clip();
+      ctx.restore();
+    }
 
-      // Noise-based organic colour variation (olive, khaki, dusty green, cracked brown-grey earth)
-      const patchColors = [
-        palette.padamGreen,
-        palette.padamBase,
-        palette.padamSoil,
-        '#5F6F3A',
-        '#786B4D',
-        '#4B5828',
-      ];
-      for (let i = 0; i < 240; i++) {
-        const rx = (seededRandom(i * 3.1) - 0.5) * 520;
-        const ry = (seededRandom(i * 7.3) - 0.5) * 520;
-        const rw = (18 + seededRandom(i * 11.7) * 55) * scale;
-        const rh = (10 + seededRandom(i * 17.9) * 28) * scale;
-        const angle = seededRandom(i * 5.5) * Math.PI;
-        const pt = toScreen(rx, ry, 0);
-
-        ctx.save();
-        ctx.translate(pt.x, pt.y);
-        ctx.rotate(angle);
-        ctx.fillStyle = patchColors[i % patchColors.length];
-        ctx.globalAlpha = 0.35 + seededRandom(i * 2.3) * 0.35;
-        ctx.beginPath();
-        ctx.ellipse(0, 0, rw, rh, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-      }
-
-      // Worn bare sandy-soil patches where fielders stand & near pitch ends
-      const wornSpots = [
-        { x: 0, y: -130, r: 36 },
-        { x: 0, y: 108, r: 42 },
-        { x: -145, y: -45, r: 26 },
-        { x: -125, y: 88, r: 24 },
-        { x: -8, y: -210, r: 28 },
-        { x: 148, y: -55, r: 25 },
-        { x: 138, y: 72, r: 25 },
-        { x: 75, y: -175, r: 24 },
-      ];
-      wornSpots.forEach((ws) => {
-        const wp = toScreen(ws.x, ws.y, 0);
-        const rad = ws.r * scale;
-        const wornGrad = ctx.createRadialGradient(wp.x, wp.y, rad * 0.15, wp.x, wp.y, rad);
-        wornGrad.addColorStop(0, s.isMonsoon ? '#4A3728' : '#9C8265');
-        wornGrad.addColorStop(0.7, s.isMonsoon ? 'rgba(74,55,40,0.5)' : 'rgba(156,130,101,0.45)');
-        wornGrad.addColorStop(1, 'rgba(156,130,101,0)');
-        ctx.fillStyle = wornGrad;
-        ctx.beginPath();
-        ctx.ellipse(wp.x, wp.y, rad * 1.15, rad * 0.82, 0, 0, Math.PI * 2);
-        ctx.fill();
-      });
-
-      // Cracked dry earth lines & golden-green paddy stubble tufts across the padam
-      ctx.strokeStyle = s.isMonsoon ? 'rgba(30, 25, 20, 0.35)' : 'rgba(68, 55, 42, 0.35)';
-      ctx.lineWidth = 1 * scale;
-      for (let i = 0; i < 95; i++) {
-        const cx1 = (seededRandom(i * 19.1) - 0.5) * 440;
-        const cy1 = (seededRandom(i * 23.7) - 0.5) * 440;
-        const p = toScreen(cx1, cy1, 0);
-        ctx.beginPath();
-        ctx.moveTo(p.x, p.y);
-        ctx.lineTo(p.x + (seededRandom(i) - 0.5) * 18 * scale, p.y + (seededRandom(i + 1) - 0.5) * 10 * scale);
-        ctx.lineTo(p.x + (seededRandom(i + 2) - 0.5) * 26 * scale, p.y + (seededRandom(i + 3) - 0.5) * 14 * scale);
-        ctx.stroke();
-      }
-
-      // Golden-green harvested paddy stubble tufts
-      for (let i = 0; i < 320; i++) {
-        const sx = (seededRandom(i * 31.3) - 0.5) * 460;
-        const sy = (seededRandom(i * 41.9) - 0.5) * 460;
-        if (Math.abs(sx) < 28 && sy > -140 && sy < 130) continue; // Keep pitch clear
-        const sp = toScreen(sx, sy, 0);
-        ctx.strokeStyle = i % 3 === 0 ? '#A3A847' : i % 2 === 0 ? '#6B7F32' : '#8C7A4B';
-        ctx.lineWidth = 1.2 * scale;
-        ctx.beginPath();
-        ctx.moveTo(sp.x, sp.y);
-        ctx.lineTo(sp.x - 2 * scale, sp.y - 4.5 * scale);
-        ctx.moveTo(sp.x, sp.y);
-        ctx.lineTo(sp.x + 2 * scale, sp.y - 4 * scale);
-        ctx.stroke();
-      }
-
-      // Monsoon Ground Puddles (reflective wet patches)
-      if (s.isMonsoon) {
-        const puddles = [
-          { x: -75, y: -90, rx: 28, ry: 14 },
-          { x: 88, y: 25, rx: 34, ry: 16 },
-          { x: -55, y: 125, rx: 25, ry: 12 },
-          { x: 110, y: -135, rx: 30, ry: 13 },
-          { x: 6, y: -15, rx: 14, ry: 22 },
-        ];
-        puddles.forEach((pd) => {
-          const pp = toScreen(pd.x, pd.y, 0);
-          ctx.fillStyle = 'rgba(100, 116, 139, 0.48)';
-          ctx.beginPath();
-          ctx.ellipse(pp.x, pp.y, pd.rx * scale, pd.ry * scale, 0.15, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.strokeStyle = 'rgba(148, 163, 184, 0.45)';
-          ctx.lineWidth = 1 * scale;
-          ctx.stroke();
-        });
-      }
-
-      ctx.restore(); // End padam clip
-
-      // ----------------------------------------------------------------------
-      // LAYER 3: NATURAL BOUNDARIES (VARAMBU MUD BUND, TALL PADDY, LOW STONE WALL)
-      // ----------------------------------------------------------------------
-      // Raised Mud Bund ("Varambu") along top-right & northern edge
-      const bundPoints = [
-        [-195, -245],
-        [-75, -270],
-        [65, -265],
-        [185, -232],
-        [248, -140],
-      ];
-      ctx.strokeStyle = palette.bundMud;
-      ctx.lineWidth = 14 * scale;
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
+    // Bare soil patches
+    const wornSpots = [
+      { x: 0, y: -130, r: 36 },
+      { x: 0, y: 108, r: 42 },
+      { x: -145, y: -45, r: 26 },
+      { x: -125, y: 88, r: 24 },
+      { x: -8, y: -210, r: 28 },
+      { x: 148, y: -55, r: 25 },
+      { x: 138, y: 72, r: 25 },
+      { x: 75, y: -175, r: 24 },
+    ];
+    wornSpots.forEach((ws) => {
+      const wp = toScreen(ws.x, ws.y, 0);
+      const rad = ws.r * scale;
+      const wornGrad = ctx.createRadialGradient(wp.x, wp.y, rad * 0.15, wp.x, wp.y, rad);
+      wornGrad.addColorStop(0, s.isMonsoon ? '#4A3728' : '#9C8265');
+      wornGrad.addColorStop(0.7, s.isMonsoon ? 'rgba(74,55,40,0.5)' : 'rgba(156,130,101,0.45)');
+      wornGrad.addColorStop(1, 'rgba(156,130,101,0)');
+      ctx.fillStyle = wornGrad;
       ctx.beginPath();
-      bundPoints.forEach(([bx, by], i) => {
-        const bp = toScreen(bx, by, 0);
-        if (i === 0) ctx.moveTo(bp.x, bp.y);
-        else ctx.lineTo(bp.x, bp.y);
-      });
-      ctx.stroke();
-
-      // Grass tufts along the top of the mud varambu
-      ctx.strokeStyle = '#4D7C0F';
-      ctx.lineWidth = 1.5 * scale;
-      for (let t = -180; t <= 180; t += 8) {
-        const wy = -266 + Math.abs(t) * 0.12;
-        const bp = toScreen(t, wy, 3);
-        ctx.beginPath();
-        ctx.moveTo(bp.x, bp.y);
-        ctx.lineTo(bp.x - 3 * scale, bp.y - 9 * scale);
-        ctx.moveTo(bp.x, bp.y);
-        ctx.lineTo(bp.x + 2 * scale, bp.y - 10 * scale);
-        ctx.stroke();
-      }
-
-      // Unharvested Tall Golden-Green Paddy Patch beyond the northern bund ("Padathil poyi" Auto-6 zone)
-      for (let py = -310; py <= -255; py += 10) {
-        for (let px = -165; px <= 155; px += 9) {
-          const tp = toScreen(px + (py % 7), py, 0);
-          ctx.strokeStyle = (px + py) % 2 === 0 ? '#65A30D' : '#CA8A04';
-          ctx.lineWidth = 1.6 * scale;
-          ctx.beginPath();
-          ctx.moveTo(tp.x, tp.y);
-          ctx.lineTo(tp.x + 2 * scale, tp.y - 13 * scale);
-          ctx.stroke();
-        }
-      }
-
-      // ----------------------------------------------------------------------
-      // LAYER 4: WINDING VILLAGE CANAL ("KAYAL") WITH BANK, HYACINTH & REEDS
-      // ----------------------------------------------------------------------
-      // Draw winding muddy brown-green canal along the left edge
-      ctx.save();
-      ctx.beginPath();
-      for (let wy = -330; wy <= 320; wy += 20) {
-        const bankX = getCanalBankX(wy);
-        const pt = toScreen(bankX, wy, 0);
-        if (wy === -330) ctx.moveTo(pt.x, pt.y);
-        else ctx.lineTo(pt.x, pt.y);
-      }
-      for (let wy = 320; wy >= -330; wy -= 20) {
-        const outerX = getCanalBankX(wy) - 105;
-        const pt = toScreen(outerX, wy, 0);
-        ctx.lineTo(pt.x, pt.y);
-      }
-      ctx.closePath();
-
-      const canalGrad = ctx.createLinearGradient(0, H * 0.25, W * 0.28, H);
-      canalGrad.addColorStop(0, '#2F3E2E');
-      canalGrad.addColorStop(0.5, palette.canalWater);
-      canalGrad.addColorStop(1, '#3E4C36');
-      ctx.fillStyle = canalGrad;
+      ctx.ellipse(wp.x, wp.y, rad * 1.15, rad * 0.82, 0, 0, Math.PI * 2);
       ctx.fill();
+    });
 
-      // Subtle water surface sheen lines
-      ctx.strokeStyle = 'rgba(163, 177, 138, 0.22)';
+    // Stubble tufts
+    for (let i = 0; i < 320; i++) {
+      const sx = (seededRandom(i * 31.3) - 0.5) * 460;
+      const sy = (seededRandom(i * 41.9) - 0.5) * 460;
+      if (Math.abs(sx) < 28 && sy > -140 && sy < 130) continue;
+      const sp = toScreen(sx, sy, 0);
+      ctx.strokeStyle = i % 3 === 0 ? '#A3A847' : i % 2 === 0 ? '#6B7F32' : '#8C7A4B';
       ctx.lineWidth = 1.2 * scale;
-      for (let wy = -280; wy <= 260; wy += 26) {
-        const bx = getCanalBankX(wy) - 45;
-        const wp = toScreen(bx, wy, 0);
-        ctx.beginPath();
-        ctx.moveTo(wp.x - 18 * scale, wp.y);
-        ctx.lineTo(wp.x + 18 * scale, wp.y);
-        ctx.stroke();
-      }
-      ctx.restore();
-
-      // Sloped Muddy Laterite & Grass Canal Bank
-      ctx.strokeStyle = palette.canalBank;
-      ctx.lineWidth = 8 * scale;
       ctx.beginPath();
-      for (let wy = -330; wy <= 320; wy += 18) {
-        const bankX = getCanalBankX(wy);
-        const pt = toScreen(bankX, wy, 0);
-        if (wy === -330) ctx.moveTo(pt.x, pt.y);
-        else ctx.lineTo(pt.x, pt.y);
-      }
+      ctx.moveTo(sp.x, sp.y);
+      ctx.lineTo(sp.x - 2 * scale, sp.y - 4.5 * scale);
+      ctx.moveTo(sp.x, sp.y);
+      ctx.lineTo(sp.x + 2 * scale, sp.y - 4 * scale);
       ctx.stroke();
+    }
+    ctx.restore();
 
-      // Floating Water Hyacinth (Payal) clusters & Canal Reeds
-      for (let wy = -260; wy <= 240; wy += 38) {
-        const bx = getCanalBankX(wy);
-        // Floating green water hyacinth pads near bank edge
-        const hp = toScreen(bx - 16 - (Math.abs(wy) % 18), wy, 0);
-        ctx.fillStyle = '#3F6212';
-        for (let c = 0; c < 4; c++) {
-          ctx.beginPath();
-          ctx.ellipse(
-            hp.x + (c - 1.5) * 6 * scale,
-            hp.y + (c % 2) * 4 * scale,
-            6 * scale,
-            3.5 * scale,
-            0.2,
-            0,
-            Math.PI * 2
-          );
-          ctx.fill();
-        }
-        // Tiny violet hyacinth flower dot
-        ctx.fillStyle = '#C084FC';
-        ctx.beginPath();
-        ctx.arc(hp.x, hp.y - 2 * scale, 2 * scale, 0, Math.PI * 2);
-        ctx.fill();
+    // Natural Varambu Bund
+    const bundPoints = [
+      [-195, -245],
+      [-75, -270],
+      [65, -265],
+      [185, -232],
+      [248, -140],
+    ];
+    ctx.strokeStyle = palette.bundMud;
+    ctx.lineWidth = 14 * scale;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    bundPoints.forEach(([bx, by], i) => {
+      const bp = toScreen(bx, by, 0);
+      if (i === 0) ctx.moveTo(bp.x, bp.y);
+      else ctx.lineTo(bp.x, bp.y);
+    });
+    ctx.stroke();
 
-        // Tall Reeds on the canal bank
-        const rp = toScreen(bx + 2, wy + 8, 0);
-        ctx.strokeStyle = '#4D7C0F';
-        ctx.lineWidth = 1.4 * scale;
-        [-3, 0, 3].forEach((ox) => {
-          ctx.beginPath();
-          ctx.moveTo(rp.x, rp.y);
-          ctx.lineTo(rp.x + ox * scale, rp.y - 14 * scale);
-          ctx.stroke();
-        });
-      }
+    // Winding Canal
+    ctx.save();
+    ctx.beginPath();
+    for (let wy = -330; wy <= 320; wy += 20) {
+      const bankX = getCanalBankX(wy);
+      const pt = toScreen(bankX, wy, 0);
+      if (wy === -330) ctx.moveTo(pt.x, pt.y);
+      else ctx.lineTo(pt.x, pt.y);
+    }
+    for (let wy = 320; wy >= -330; wy -= 20) {
+      const outerX = getCanalBankX(wy) - 105;
+      const pt = toScreen(outerX, wy, 0);
+      ctx.lineTo(pt.x, pt.y);
+    }
+    ctx.closePath();
+    ctx.fillStyle = palette.canalWater;
+    ctx.fill();
+    ctx.restore();
 
-      // ----------------------------------------------------------------------
-      // LAYER 5: COMPACTED RED-BROWN LATERITE CLAY PITCH
-      // ----------------------------------------------------------------------
-      // Irregular hand-prepared village pitch strip
-      ctx.save();
+    // Canal Bank
+    ctx.strokeStyle = palette.canalBank;
+    ctx.lineWidth = 8 * scale;
+    ctx.beginPath();
+    for (let wy = -330; wy <= 320; wy += 18) {
+      const bankX = getCanalBankX(wy);
+      const pt = toScreen(bankX, wy, 0);
+      if (wy === -330) ctx.moveTo(pt.x, pt.y);
+      else ctx.lineTo(pt.x, pt.y);
+    }
+    ctx.stroke();
+
+    // Compacted Laterite Pitch
+    ctx.save();
+    ctx.beginPath();
+    const pitchLeftPoints = [
+      [-16, -135],
+      [-18, -60],
+      [-17, 20],
+      [-19, 118],
+    ];
+    const pitchRightPoints = [
+      [19, 118],
+      [17, 25],
+      [18, -55],
+      [16, -135],
+    ];
+    pitchLeftPoints.forEach(([px, py], i) => {
+      const pt = toScreen(px, py, 0);
+      if (i === 0) ctx.moveTo(pt.x, pt.y);
+      else ctx.lineTo(pt.x, pt.y);
+    });
+    pitchRightPoints.forEach(([px, py]) => {
+      const pt = toScreen(px, py, 0);
+      ctx.lineTo(pt.x, pt.y);
+    });
+    ctx.closePath();
+    ctx.fillStyle = palette.pitchClay;
+    ctx.fill();
+
+    const drawFadedCrease = (wy: number) => {
+      const cL = toScreen(-16, wy, 0);
+      const cR = toScreen(16, wy, 0);
+      ctx.strokeStyle = 'rgba(245, 245, 244, 0.52)';
+      ctx.lineWidth = 2 * scale;
       ctx.beginPath();
-      const pitchLeftPoints = [
-        [-16, -135],
-        [-18, -60],
-        [-17, 20],
-        [-19, 118],
-      ];
-      const pitchRightPoints = [
-        [19, 118],
-        [17, 25],
-        [18, -55],
-        [16, -135],
-      ];
-      pitchLeftPoints.forEach(([px, py], i) => {
-        const pt = toScreen(px, py, 0);
-        if (i === 0) ctx.moveTo(pt.x, pt.y);
-        else ctx.lineTo(pt.x, pt.y);
-      });
-      pitchRightPoints.forEach(([px, py]) => {
-        const pt = toScreen(px, py, 0);
-        ctx.lineTo(pt.x, pt.y);
-      });
-      ctx.closePath();
-
-      const pitchGrad = ctx.createLinearGradient(0, toScreen(0, -135, 0).y, 0, toScreen(0, 118, 0).y);
-      pitchGrad.addColorStop(0, palette.pitchDark);
-      pitchGrad.addColorStop(0.2, palette.pitchClay);
-      pitchGrad.addColorStop(0.8, palette.pitchClay);
-      pitchGrad.addColorStop(1, palette.pitchDark);
-      ctx.fillStyle = pitchGrad;
-      ctx.fill();
-
-      // Cracks & worn bowler/batter footmarks on the laterite clay
-      ctx.strokeStyle = 'rgba(45, 18, 8, 0.45)';
-      ctx.lineWidth = 1 * scale;
-      for (let py = -110; py <= 95; py += 18) {
-        const cp = toScreen((py % 9) - 4, py, 0);
-        ctx.beginPath();
-        ctx.moveTo(cp.x - 6 * scale, cp.y);
-        ctx.lineTo(cp.x + 2 * scale, cp.y + 3 * scale);
-        ctx.lineTo(cp.x + 7 * scale, cp.y - 1 * scale);
-        ctx.stroke();
-      }
-
-      // Faded hand-drawn lime/chalk crease lines
-      const drawFadedCrease = (wy: number) => {
-        const cL = toScreen(-16, wy, 0);
-        const cR = toScreen(16, wy, 0);
-        ctx.strokeStyle = 'rgba(245, 245, 244, 0.52)';
-        ctx.lineWidth = 2 * scale;
-        ctx.setLineDash([7 * scale, 3 * scale, 12 * scale, 2 * scale]);
-        ctx.beginPath();
-        ctx.moveTo(cL.x, cL.y);
-        ctx.lineTo(cR.x, cR.y);
-        ctx.stroke();
-        ctx.setLineDash([]);
-      };
-      drawFadedCrease(-112);
-      drawFadedCrease(95);
-      ctx.restore();
-
-      // ----------------------------------------------------------------------
-      // LAYER 6: MIDGROUND VILLAGE ARCHITECTURE & TREES (TEMPLE, CHURCH, HOUSE,
-      //          BANYAN TREE, JACKFRUIT TREE, BANANA PLANTS, CHAYAKADA, AUTO)
-      // ----------------------------------------------------------------------
-      // 1. Small Kerala Temple in the Distance (Left-Center Horizon)
-      const templePos = toScreen(-125, -305, 0);
-      ctx.save();
-      ctx.translate(templePos.x, templePos.y);
-      ctx.fillStyle = '#F5F5F4';
-      ctx.fillRect(-16 * scale, -22 * scale, 32 * scale, 22 * scale);
-      // Terracotta two-tier sloped roof
-      ctx.fillStyle = '#9A3412';
-      ctx.beginPath();
-      ctx.moveTo(-22 * scale, -22 * scale);
-      ctx.lineTo(0, -44 * scale);
-      ctx.lineTo(22 * scale, -22 * scale);
-      ctx.closePath();
-      ctx.fill();
-      ctx.fillStyle = '#D97706';
-      ctx.beginPath();
-      ctx.arc(0, -46 * scale, 2.8 * scale, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-
-      // 2. Small Village Church (Right-Center Horizon)
-      const churchPos = toScreen(145, -298, 0);
-      ctx.save();
-      ctx.translate(churchPos.x, churchPos.y);
-      ctx.fillStyle = '#FAFAF9';
-      ctx.fillRect(-14 * scale, -24 * scale, 28 * scale, 24 * scale);
-      ctx.fillStyle = '#991B1B';
-      ctx.beginPath();
-      ctx.moveTo(-17 * scale, -24 * scale);
-      ctx.lineTo(0, -40 * scale);
-      ctx.lineTo(17 * scale, -24 * scale);
-      ctx.closePath();
-      ctx.fill();
-      ctx.strokeStyle = '#EAB308';
-      ctx.lineWidth = 1.8 * scale;
-      ctx.beginPath();
-      ctx.moveTo(0, -50 * scale);
-      ctx.lineTo(0, -39 * scale);
-      ctx.moveTo(-4 * scale, -46 * scale);
-      ctx.lineTo(4 * scale, -46 * scale);
+      ctx.moveTo(cL.x, cL.y);
+      ctx.lineTo(cR.x, cR.y);
       ctx.stroke();
-      ctx.restore();
+    };
+    drawFadedCrease(-112);
+    drawFadedCrease(95);
+    ctx.restore();
 
-      // 3. Tiled-Roof Kerala House with Clothesline (Right Midground)
-      const housePos = toScreen(225, -220, 0);
-      ctx.save();
-      ctx.translate(housePos.x, housePos.y);
-      ctx.fillStyle = '#E7E5E4';
-      ctx.fillRect(-28 * scale, -24 * scale, 56 * scale, 24 * scale);
-      // Wooden pillars
-      ctx.fillStyle = '#451A03';
-      [-20, 0, 20].forEach((px) => ctx.fillRect(px * scale, -18 * scale, 2.5 * scale, 18 * scale));
-      // Sloped Mangalore clay tile roof
-      ctx.fillStyle = '#B45309';
-      ctx.beginPath();
-      ctx.moveTo(-34 * scale, -22 * scale);
-      ctx.lineTo(-22 * scale, -40 * scale);
-      ctx.lineTo(22 * scale, -40 * scale);
-      ctx.lineTo(34 * scale, -22 * scale);
-      ctx.closePath();
-      ctx.fill();
-      ctx.restore();
+    // Village Structures (Banyan, Chayakada, Palm Trunks, Wall)
+    // Chayakada Tea Shop
+    const chayaPos = toScreen(255, -88, 0);
+    ctx.save();
+    ctx.translate(chayaPos.x, chayaPos.y);
+    ctx.fillStyle = '#5C4033';
+    ctx.fillRect(-34 * scale, -30 * scale, 68 * scale, 32 * scale);
+    ctx.fillStyle = '#94A3B8';
+    ctx.beginPath();
+    ctx.moveTo(-42 * scale, -28 * scale);
+    ctx.lineTo(-30 * scale, -48 * scale);
+    ctx.lineTo(32 * scale, -48 * scale);
+    ctx.lineTo(44 * scale, -28 * scale);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
 
-      // Clothesline tied between the house and nearby palm
-      const clStart = toScreen(195, -210, 18);
-      const clEnd = toScreen(250, -180, 18);
-      ctx.strokeStyle = '#D6D3D1';
-      ctx.lineWidth = 1 * scale;
-      ctx.beginPath();
-      ctx.moveTo(clStart.x, clStart.y);
-      ctx.lineTo(clEnd.x, clEnd.y);
-      ctx.stroke();
-      ['#DC2626', '#2563EB', '#FACC15', '#16A34A'].forEach((col, idx) => {
-        const frac = (idx + 1) / 5;
-        const lx = clStart.x + (clEnd.x - clStart.x) * frac;
-        const ly = clStart.y + (clEnd.y - clStart.y) * frac;
-        ctx.fillStyle = col;
-        ctx.fillRect(lx - 4 * scale, ly, 8 * scale, 11 * scale);
-      });
-
-      // 4. Ancient Banyan Tree ("Aalmaram") with Aerial Roots & Stone Platform (Left-Top Midground)
-      const banyanPos = toScreen(-165, -230, 0);
-      ctx.save();
-      ctx.translate(banyanPos.x, banyanPos.y);
-      // Laterite stone platform (Althara)
-      ctx.fillStyle = '#78350F';
-      ctx.fillRect(-26 * scale, -6 * scale, 52 * scale, 8 * scale);
-      // Thick gnarled trunk & hanging aerial roots
-      ctx.fillStyle = '#44403C';
-      ctx.fillRect(-10 * scale, -42 * scale, 20 * scale, 36 * scale);
-      ctx.strokeStyle = '#57534E';
-      ctx.lineWidth = 1.6 * scale;
-      [-16, -11, 12, 17].forEach((rx) => {
-        ctx.beginPath();
-        ctx.moveTo(rx * scale, -36 * scale);
-        ctx.lineTo((rx + 1) * scale, -6 * scale);
-        ctx.stroke();
-      });
-      // Lush layered banyan canopy
-      ctx.fillStyle = '#14532D';
-      ctx.beginPath();
-      ctx.ellipse(0, -52 * scale, 44 * scale, 24 * scale, 0, 0, Math.PI * 2);
-      ctx.ellipse(-22 * scale, -44 * scale, 28 * scale, 18 * scale, 0, 0, Math.PI * 2);
-      ctx.ellipse(22 * scale, -44 * scale, 28 * scale, 18 * scale, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-
-      // 5. Jackfruit Tree ("Plavu") with Hanging Jackfruits (Right Midground)
-      const jackPos = toScreen(265, -145, 0);
-      ctx.save();
-      ctx.translate(jackPos.x, jackPos.y);
-      ctx.fillStyle = '#451A03';
-      ctx.fillRect(-6 * scale, -38 * scale, 12 * scale, 38 * scale);
-      // Hanging green spiny jackfruits (Chakka) on the trunk
-      ctx.fillStyle = '#65A30D';
-      ctx.beginPath();
-      ctx.ellipse(-8 * scale, -22 * scale, 4.5 * scale, 7 * scale, 0.2, 0, Math.PI * 2);
-      ctx.ellipse(8 * scale, -16 * scale, 4 * scale, 6.5 * scale, -0.2, 0, Math.PI * 2);
-      ctx.fill();
-      // Canopy
-      ctx.fillStyle = '#166534';
-      ctx.beginPath();
-      ctx.arc(0, -48 * scale, 26 * scale, 0, Math.PI * 2);
-      ctx.arc(-14 * scale, -40 * scale, 18 * scale, 0, Math.PI * 2);
-      ctx.arc(14 * scale, -40 * scale, 18 * scale, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-
-      // 6. Banana Plants ("Vazha") with Broad Leaves
-      const drawBananaPlant = (wx: number, wy: number) => {
-        const bp = toScreen(wx, wy, 0);
-        ctx.save();
-        ctx.translate(bp.x, bp.y);
-        ctx.fillStyle = '#4D7C0F';
-        ctx.fillRect(-2.5 * scale, -18 * scale, 5 * scale, 18 * scale);
-        const leafAngles = [-2.4, -1.8, -1.2, -0.6, -0.2];
-        ctx.fillStyle = '#65A30D';
-        leafAngles.forEach((ang) => {
-          ctx.save();
-          ctx.translate(0, -18 * scale);
-          ctx.rotate(ang);
-          ctx.beginPath();
-          ctx.ellipse(12 * scale, 0, 13 * scale, 4 * scale, 0, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.restore();
-        });
-        ctx.restore();
-      };
-      drawBananaPlant(232, -165);
-      drawBananaPlant(248, -155);
-      drawBananaPlant(-182, -195);
-
-      // 7. Chayakada (Village Tea Shop with Weathered Corrugated Tin Roof)
-      const chayaPos = toScreen(255, -88, 0);
-      ctx.save();
-      ctx.translate(chayaPos.x, chayaPos.y);
-      // Long golden-hour shadow
-      ctx.fillStyle = palette.shadowColor;
-      ctx.beginPath();
-      ctx.ellipse(-18 * scale, 4 * scale, 44 * scale, 12 * scale, 0, 0, Math.PI * 2);
-      ctx.fill();
-      // Wooden shop shack & open front counter
-      ctx.fillStyle = '#5C4033';
-      ctx.fillRect(-34 * scale, -30 * scale, 68 * scale, 32 * scale);
-      ctx.fillStyle = '#271911';
-      ctx.fillRect(-26 * scale, -24 * scale, 52 * scale, 16 * scale);
-      // Warm glowing lantern inside chayakada in Evening/Monsoon
-      if (s.timeOfDay === 'EVENING' || s.isMonsoon) {
-        const glow = ctx.createRadialGradient(0, -18 * scale, 2 * scale, 0, -18 * scale, 38 * scale);
-        glow.addColorStop(0, 'rgba(251, 191, 36, 0.85)');
-        glow.addColorStop(1, 'rgba(251, 191, 36, 0)');
-        ctx.fillStyle = glow;
-        ctx.beginPath();
-        ctx.arc(0, -18 * scale, 38 * scale, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      // Brass samovar & glass jars
-      ctx.fillStyle = '#D97706';
-      ctx.fillRect(-18 * scale, -18 * scale, 9 * scale, 11 * scale);
-      // Hanging ripe banana bunches
-      ctx.fillStyle = '#EAB308';
-      ctx.beginPath();
-      ctx.arc(16 * scale, -19 * scale, 5.5 * scale, 0, Math.PI * 2);
-      ctx.arc(23 * scale, -18 * scale, 4.5 * scale, 0, Math.PI * 2);
-      ctx.fill();
-      // Corrugated Rusty/Silver Tin Roof
-      ctx.fillStyle = '#94A3B8';
-      ctx.beginPath();
-      ctx.moveTo(-42 * scale, -28 * scale);
-      ctx.lineTo(-30 * scale, -48 * scale);
-      ctx.lineTo(32 * scale, -48 * scale);
-      ctx.lineTo(44 * scale, -28 * scale);
-      ctx.closePath();
-      ctx.fill();
-      // Rust patches & ridges on tin roof
-      ctx.fillStyle = 'rgba(154, 52, 18, 0.38)';
-      ctx.fillRect(-18 * scale, -43 * scale, 22 * scale, 8 * scale);
-      ctx.strokeStyle = '#475569';
-      ctx.lineWidth = 1.3 * scale;
-      for (let rx = -28; rx <= 28; rx += 8) {
-        ctx.beginPath();
-        ctx.moveTo(rx * scale, -48 * scale);
-        ctx.lineTo((rx + 4) * scale, -28 * scale);
-        ctx.stroke();
-      }
-      ctx.restore();
-
-      // 8. Parked Kerala Auto-Rickshaw near the Chayakada
-      const autoPos = toScreen(272, 22, 0);
-      ctx.save();
-      ctx.translate(autoPos.x, autoPos.y);
-      ctx.fillStyle = palette.shadowColor;
-      ctx.beginPath();
-      ctx.ellipse(-6 * scale, 2 * scale, 24 * scale, 8 * scale, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#1C1917';
-      ctx.fillRect(-18 * scale, -13 * scale, 36 * scale, 11 * scale);
-      ctx.fillStyle = '#EAB308';
-      ctx.beginPath();
-      ctx.roundRect(-16 * scale, -26 * scale, 32 * scale, 14 * scale, 5 * scale);
-      ctx.fill();
-      ctx.fillStyle = '#0C0A09';
-      ctx.beginPath();
-      ctx.arc(-12 * scale, -2 * scale, 4.5 * scale, 0, Math.PI * 2);
-      ctx.arc(12 * scale, -2 * scale, 4.5 * scale, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-
-      // 9. Low Laterite Stone Wall ("Kallu Mathil") on Right-Bottom Edge
-      const wallStart = toScreen(185, 175, 0);
-      const wallEnd = toScreen(275, 85, 0);
-      ctx.strokeStyle = '#7C2D12';
-      ctx.lineWidth = 13 * scale;
+    // Palm Trunks
+    palmsRef.current.forEach((palm) => {
+      const base = toScreen(palm.wx, palm.wy, 0);
+      const top = toScreen(palm.wx + palm.lean, palm.wy, palm.height);
+      ctx.strokeStyle = s.timeOfDay === 'EVENING' ? '#292524' : '#57534E';
+      ctx.lineWidth = 5.5 * scale;
       ctx.lineCap = 'round';
       ctx.beginPath();
-      ctx.moveTo(wallStart.x, wallStart.y);
-      ctx.lineTo(wallEnd.x, wallEnd.y);
+      ctx.moveTo(base.x, base.y);
+      ctx.quadraticCurveTo(
+        (base.x + top.x) * 0.5 + palm.lean * 0.3 * scale,
+        (base.y + top.y) * 0.5,
+        top.x,
+        top.y
+      );
       ctx.stroke();
-      // Individual laterite stone blocks texture
-      ctx.strokeStyle = '#451A03';
-      ctx.lineWidth = 1.2 * scale;
-      for (let t = 0.08; t <= 0.92; t += 0.12) {
-        const bx = wallStart.x + (wallEnd.x - wallStart.x) * t;
-        const by = wallStart.y + (wallEnd.y - wallStart.y) * t;
-        ctx.strokeRect(bx - 5 * scale, by - 4 * scale, 10 * scale, 6 * scale);
-      }
+    });
 
-      // 10. Static Coconut Palm Trunks & Long Golden-Hour Shadows (Fronds sway in dynamic loop)
-      palmsRef.current.forEach((palm) => {
-        const base = toScreen(palm.wx, palm.wy, 0);
-        const top = toScreen(palm.wx + palm.lean, palm.wy, palm.height);
-
-        // Long golden-hour ground shadow
-        const shadowEnd = toScreen(palm.wx - 65, palm.wy + 25, 0);
-        ctx.strokeStyle = palette.shadowColor;
-        ctx.lineWidth = 5 * scale;
-        ctx.beginPath();
-        ctx.moveTo(base.x, base.y);
-        ctx.lineTo(shadowEnd.x, shadowEnd.y);
-        ctx.stroke();
-
-        // Ringed coconut trunk
-        ctx.strokeStyle = s.timeOfDay === 'EVENING' ? '#292524' : '#57534E';
-        ctx.lineWidth = 5.5 * scale;
-        ctx.lineCap = 'round';
-        ctx.beginPath();
-        ctx.moveTo(base.x, base.y);
-        ctx.quadraticCurveTo(
-          (base.x + top.x) * 0.5 + palm.lean * 0.3 * scale,
-          (base.y + top.y) * 0.5,
-          top.x,
-          top.y
-        );
-        ctx.stroke();
-      });
-
-      // 11. Foreground Details (Stones, Tall Grass Tufts, Discarded Plastic Chair & Wooden Bench)
-      // Wooden bench near bottom-left canal bank
-      const benchPos = toScreen(-155, 215, 0);
-      ctx.save();
-      ctx.translate(benchPos.x, benchPos.y);
-      ctx.fillStyle = '#5C4033';
-      ctx.fillRect(-20 * scale, -8 * scale, 40 * scale, 4 * scale);
-      ctx.fillRect(-16 * scale, -4 * scale, 3 * scale, 7 * scale);
-      ctx.fillRect(13 * scale, -4 * scale, 3 * scale, 7 * scale);
-      ctx.restore();
-
-      // Discarded blue plastic village chair near bottom-right boundary
-      const chairPos = toScreen(165, 212, 0);
-      ctx.save();
-      ctx.translate(chairPos.x, chairPos.y);
-      ctx.rotate(0.18);
-      ctx.fillStyle = '#1D4ED8';
-      ctx.fillRect(-8 * scale, -14 * scale, 16 * scale, 10 * scale);
-      ctx.fillStyle = '#2563EB';
-      ctx.fillRect(-9 * scale, -6 * scale, 18 * scale, 4 * scale);
-      ctx.strokeStyle = '#1E40AF';
-      ctx.lineWidth = 1.8 * scale;
-      ctx.beginPath();
-      ctx.moveTo(-7 * scale, -2 * scale);
-      ctx.lineTo(-8 * scale, 5 * scale);
-      ctx.moveTo(7 * scale, -2 * scale);
-      ctx.lineTo(8 * scale, 5 * scale);
-      ctx.stroke();
-      ctx.restore();
-
-      // Foreground stones & tall grass tufts along bottom edge
-      const fgSpots = [-210, -130, -65, 55, 125, 205];
-      fgSpots.forEach((fx, idx) => {
-        const fp = toScreen(fx, 242 + (idx % 3) * 8, 0);
-        // Laterite stones
-        ctx.fillStyle = '#57534E';
-        ctx.beginPath();
-        ctx.ellipse(fp.x, fp.y, 7 * scale, 4.5 * scale, 0.2, 0, Math.PI * 2);
-        ctx.fill();
-        // Tall grass blades
-        ctx.strokeStyle = '#3F6212';
-        ctx.lineWidth = 1.8 * scale;
-        [-4, -1, 2, 5].forEach((gx) => {
-          ctx.beginPath();
-          ctx.moveTo(fp.x + gx * scale, fp.y);
-          ctx.lineTo(fp.x + (gx * 1.8) * scale, fp.y - 16 * scale);
-          ctx.stroke();
-        });
-      });
-
-      bgDirtyRef.current = false;
-    },
-    []
-  );
+    bgDirtyRef.current = false;
+  }, []);
 
   // ==========================================================================
-  // 7. MAIN 60FPS UPDATE & DYNAMIC RENDER LOOP
+  // 60FPS GAME LOOP
   // ==========================================================================
   useEffect(() => {
     let animId: number;
@@ -1843,37 +2169,33 @@ export default function GullyKeralaGame() {
 
       const s = simRef.current;
 
-      // ----------------------------------------------------------------------
-      // A. SIMULATION UPDATE
-      // ----------------------------------------------------------------------
       if (s.hitStopTimer > 0) {
         s.hitStopTimer -= dt;
       } else if (s.screen !== 'PAUSED') {
         if (s.shakeIntensity > 0) s.shakeIntensity = Math.max(0, s.shakeIntensity - dt * 28);
         if (s.popupTimer > 0) s.popupTimer = Math.max(0, s.popupTimer - dt);
         if (s.batSwingAnim > 0) s.batSwingAnim = Math.max(0, s.batSwingAnim - dt * 3.8);
-        if (s.grassFlutterTimer > 0) s.grassFlutterTimer = Math.max(0, s.grassFlutterTimer - dt);
 
-        // Animate wooden boat / kettuvallam along the winding canal
+        // Human Bowler 3-Second Choice Countdown (Bowling Device triggers, Batting Device syncs)
+        if (s.bowlerChoosing) {
+          s.bowlerTimer -= dt;
+          setBowlerChoiceTimer(Math.max(0, s.bowlerTimer));
+          if (s.isLocalPlayerBowling && s.bowlerTimer <= 0) {
+            confirmBowlingDelivery();
+          } else if (!s.isLocalPlayerBowling && s.bowlerTimer <= -1.2) {
+            applyBowlingChoice({
+              variation: 'FAST',
+              line: 'MIDDLE',
+              length: 'GOOD',
+              timestamp: Date.now(),
+            });
+          }
+        }
+
         s.boatY += dt * 11;
         if (s.boatY > 210) s.boatY = -240;
 
-        // Animate goat tied near the northern bund (wanders in a tether arc)
-        if (s.goat.pauseTimer > 0) {
-          s.goat.pauseTimer -= dt;
-        } else {
-          s.goat.angle += dt * 0.65;
-          s.goat.x = 148 + Math.cos(s.goat.angle) * 18;
-          s.goat.y = -215 + Math.sin(s.goat.angle) * 10;
-        }
-
-        // Animate wandering village dog near bottom boundary
-        s.dog.x += s.dog.vx * dt;
-        s.dog.y += s.dog.vy * dt;
-        if (s.dog.x < -150 || s.dog.x > -40) s.dog.vx *= -1;
-        if (s.dog.y < 145 || s.dog.y > 195) s.dog.vy *= -1;
-
-        // Periodically spawn new randomized crow or paddy heron flocks across the background
+        // Animate sky birds
         s.birdSpawnTimer -= dt;
         const currentW = canvasRef.current?.width || 1280;
         const currentH = canvasRef.current?.height || 720;
@@ -1884,7 +2206,6 @@ export default function GullyKeralaGame() {
           s.birdSpawnTimer = 4.2 + Math.random() * 3.8;
         }
 
-        // Animate sky birds (crows & paddy herons) crossing horizon
         s.skyBirds = s.skyBirds.filter((b) => {
           b.x += b.vx * dt;
           b.y += b.vy * dt + Math.sin(b.wingPhase) * 0.12;
@@ -1892,7 +2213,7 @@ export default function GullyKeralaGame() {
           return b.x > -140 && b.x < currentW + 140;
         });
 
-        // Update particles (dust puffs & boundary bursts)
+        // Update particles
         s.particles = s.particles.filter((p) => {
           p.life += dt;
           p.x += p.vx * dt;
@@ -1906,19 +2227,6 @@ export default function GullyKeralaGame() {
           return p.life < p.maxLife;
         });
 
-        // Continuous subtle ripples in the canal (more frequent in monsoon)
-        if (Math.random() < (s.isMonsoon ? 0.35 : 0.06)) {
-          const ry = -220 + Math.random() * 440;
-          const rx = getCanalBankX(ry) - 25 - Math.random() * 45;
-          s.waterRipples.push({ x: rx, y: ry, r: 2, alpha: 0.65 });
-        }
-
-        s.waterRipples = s.waterRipples.filter((r) => {
-          r.r += dt * 32;
-          r.alpha -= dt * 0.65;
-          return r.alpha > 0;
-        });
-
         if (s.isMonsoon) {
           s.rain.forEach((drop) => {
             drop.x -= drop.speed * 0.32 * dt;
@@ -1930,10 +2238,8 @@ export default function GullyKeralaGame() {
           });
         }
 
-        // Active Gameplay Delivery Phases
+        // Active Delivery Simulation
         if (s.screen === 'PLAYING') {
-          const rival = GAME_CONFIG.RIVALS[s.rivalIdx] || GAME_CONFIG.RIVALS[0];
-
           if (s.phase === 'RUNUP') {
             s.phaseTimer -= dt;
             const runupFrac = 1 - Math.max(0, s.phaseTimer);
@@ -1944,16 +2250,6 @@ export default function GullyKeralaGame() {
             if (s.phaseTimer <= 0) {
               s.phase = 'BOWLING';
               s.ballProgress = 0;
-              const typeSpeedMult =
-                s.ballType === 'FAST'
-                  ? 1.18
-                  : s.ballType === 'SLOWER'
-                  ? 0.78
-                  : s.ballType === 'BOUNCER'
-                  ? 1.12
-                  : 0.92;
-              s.ballSpeed = GAME_CONFIG.DIFFICULTY.BASE_BALL_SPEED * rival.speedMult * typeSpeedMult;
-              s.ballSpinCurve = s.ballType === 'SPIN' ? (Math.random() > 0.5 ? 24 : -24) : 0;
             }
           } else if (s.phase === 'BOWLING') {
             const monsoonPitchMod =
@@ -1963,13 +2259,13 @@ export default function GullyKeralaGame() {
             s.ballProgress += s.ballSpeed * monsoonPitchMod * dt;
 
             const p = s.ballProgress;
-            const bouncePoint = s.ballType === 'BOUNCER' ? 0.45 : 0.62;
+            const bouncePoint = s.ballLength === 'SHORT' ? 0.42 : s.ballLength === 'FULL' ? 0.72 : 0.6;
+            const lineOffset = s.ballLine === 'OFF' ? 22 : s.ballLine === 'LEG' ? -22 : 0;
             const lateralSpin = p > bouncePoint ? ((p - bouncePoint) / (1 - bouncePoint)) * s.ballSpinCurve : 0;
 
-            s.ball.x = (1 - p) * 5 + lateralSpin;
+            s.ball.x = (1 - p) * 5 + lineOffset * p + lateralSpin;
             s.ball.y = -122 + p * 228;
 
-            // Spawn a dust puff when the ball pitches on the laterite clay
             if (prevP < bouncePoint && p >= bouncePoint) {
               spawnParticles(s.ball.x, s.ball.y, 2, s.isMonsoon ? '#78716C' : '#D6B89A', 8, 0.45);
             }
@@ -1978,11 +2274,12 @@ export default function GullyKeralaGame() {
               s.ball.z = 28 * (1 - p / bouncePoint);
             } else {
               const afterFrac = (p - bouncePoint) / (1 - bouncePoint);
-              const peakZ = s.ballType === 'BOUNCER' ? 38 : 19;
+              const peakZ = s.ballType === 'BOUNCER' || s.ballLength === 'SHORT' ? 38 : 19;
               s.ball.z = Math.sin(afterFrac * Math.PI * 0.85) * peakZ;
             }
 
             if (s.ballProgress >= 1.02) {
+              const nextBallNum = s.balls + 1;
               const hitStumps = Math.abs(s.ball.x) < 14 && s.ballType !== 'BOUNCER';
               if (hitStumps) {
                 audio.playWicketSound();
@@ -1991,22 +2288,22 @@ export default function GullyKeralaGame() {
                 triggerPopup(COMMENTARY.BOWLED_OUT, '#EF4444');
                 s.phase = 'BALL_SETTLED';
                 s.phaseTimer = 1.35;
-                setTimeout(() => resolveDeliveryOutcome(0, true, 'W'), 950);
+                setTimeout(() => resolveDeliveryOutcome(0, true, 'W', undefined, false, nextBallNum), 950);
+              } else if (Math.abs(s.ball.x) < 18 && s.ballLength === 'FULL') {
+                // LBW Case on full ball in line with stumps
+                audio.playWicketSound();
+                triggerPopup(COMMENTARY.LBW_OUT, '#EF4444');
+                s.phase = 'BALL_SETTLED';
+                setTimeout(() => resolveDeliveryOutcome(0, true, 'LBW', undefined, false, nextBallNum), 950);
               } else {
                 triggerPopup(COMMENTARY.DOT, '#94A3B8');
                 s.phase = 'BALL_SETTLED';
                 s.phaseTimer = 1.1;
-                setTimeout(() => resolveDeliveryOutcome(0, false, '0'), 800);
+                setTimeout(() => resolveDeliveryOutcome(0, false, '0', undefined, false, nextBallNum), 800);
               }
             }
           } else if (s.phase === 'HIT_FLIGHT') {
-            const grassDrag =
-              s.ball.z <= 2
-                ? s.isMonsoon
-                  ? GAME_CONFIG.DIFFICULTY.MONSOON_SLOWDOWN
-                  : 0.92
-                : 0.995;
-
+            const grassDrag = s.ball.z <= 2 ? (s.isMonsoon ? 0.78 : 0.92) : 0.995;
             s.ball.x += s.ball.vx * dt;
             s.ball.y += s.ball.vy * dt;
             s.ball.z += s.ball.vz * dt;
@@ -2018,24 +2315,20 @@ export default function GullyKeralaGame() {
               s.ball.vz = Math.abs(s.ball.vz) * (s.isMonsoon ? 0.32 : 0.48);
               s.ball.vx *= grassDrag;
               s.ball.vy *= grassDrag;
-              // Dust / mud puff on ground bounce
-              spawnParticles(s.ball.x, s.ball.y, 1, s.isMonsoon ? '#57534E' : '#C2A878', 7, 0.4);
             }
 
-            const fSpeed = GAME_CONFIG.DIFFICULTY.FIELDER_SPEED * rival.fielderBoost;
+            // Fielder sprint
             let caughtByFielder = false;
             let stoppedByFielder = false;
-
             for (const f of s.fielders) {
               const dx = s.ball.x - f.x;
               const dy = s.ball.y - f.y;
               const dist = Math.hypot(dx, dy);
               if (dist > 4) {
-                f.x += (dx / dist) * fSpeed * dt;
-                f.y += (dy / dist) * fSpeed * dt;
+                f.x += (dx / dist) * 115 * dt;
+                f.y += (dy / dist) * 115 * dt;
               }
-
-              if (s.ball.bounces === 0 && s.ball.z < 52 && dist < GAME_CONFIG.DIFFICULTY.CATCH_RADIUS) {
+              if (s.ball.bounces === 0 && s.ball.z < 52 && dist < 26) {
                 caughtByFielder = true;
                 break;
               }
@@ -2045,113 +2338,63 @@ export default function GullyKeralaGame() {
               }
             }
 
-            // ----------------------------------------------------------------
-            // CHECK REALISTIC VILLAGE BOUNDARIES & RULES
-            // ----------------------------------------------------------------
+            // Boundary & Village Rule checks
             const distFromCenter = Math.hypot(s.ball.x * 0.9, (s.ball.y + 10) * 0.95);
             const canalEdgeX = getCanalBankX(s.ball.y);
+            const nextBallNum = s.balls + 1;
 
-            // 1. Caught by Fielder
             if (caughtByFielder) {
               audio.playWicketSound();
               triggerPopup(COMMENTARY.CAUGHT_OUT, '#EF4444');
-              spawnParticles(s.ball.x, s.ball.y, 15, '#EF4444', 16);
               s.phase = 'BALL_SETTLED';
-              setTimeout(() => resolveDeliveryOutcome(0, true, 'W'), 1000);
-            }
-            // 2. Hit Tied Goat near Bund or Pecking Hens (Comic Pause, 0 Runs)
-            else if (
-              (Math.hypot(s.ball.x - s.goat.x, s.ball.y - s.goat.y) < 30 ||
-                Math.hypot(s.ball.x - 155, s.ball.y - 150) < 28) &&
-              s.ball.z < 36
-            ) {
-              audio.playGoatBleat();
-              s.goat.pauseTimer = 1.8;
-              triggerPopup(COMMENTARY.ANIMAL_DOT, '#F59E0B');
-              spawnParticles(s.ball.x, s.ball.y, 18, '#FDE047', 14);
-              s.phase = 'BALL_SETTLED';
-              setTimeout(() => resolveDeliveryOutcome(0, false, '🐐', 'Animal Interception!'), 1100);
-            }
-            // 3. Hit Chayakada Tin Roof (x: 215..305, y: -135..-45) -> Crows scatter + +2 Bonus Runs!
-            else if (s.ball.x > 210 && s.ball.x < 310 && s.ball.y > -140 && s.ball.y < -40 && s.ball.z < 65) {
+              setTimeout(() => resolveDeliveryOutcome(0, true, 'W', undefined, false, nextBallNum), 1000);
+            } else if (s.ball.x > 210 && s.ball.x < 310 && s.ball.y > -140 && s.ball.y < -40 && s.ball.z < 65) {
+              // Tin Roof Hit
               audio.playTinRoofClang();
               audio.playChendaBoundaryBeat();
-              s.shakeIntensity = 7;
-              s.crows.forEach((c) => (c.flying = 1.8));
-              const totalRoofRuns = s.ball.bounces === 0 ? 6 : 4;
-              const withBonus = totalRoofRuns + 2;
+              const roofRuns = s.ball.bounces === 0 ? 8 : 6;
               triggerPopup(COMMENTARY.ROOF, '#38BDF8');
-              spawnParticles(s.ball.x, s.ball.y, 40, '#E2E8F0', 22);
               s.phase = 'BALL_SETTLED';
-              setTimeout(
-                () => resolveDeliveryOutcome(withBonus, false, `${withBonus}`, `Chayakada Tin Roof (${withBonus} Runs)`),
-                1100
-              );
-            }
-            // 4. Ball Hit into Winding Canal ("Kayal" x < canalEdgeX) = OUT!
-            else if (s.ball.x < canalEdgeX && s.ball.z <= 14) {
+              setTimeout(() => resolveDeliveryOutcome(roofRuns, false, `${roofRuns}`, 'Chayakada Roof Smash', false, nextBallNum), 1100);
+            } else if (s.ball.x < canalEdgeX && s.ball.z <= 14) {
+              // Canal OUT
               audio.playSplash();
-              s.waterRipples.push({ x: s.ball.x, y: s.ball.y, r: 5, alpha: 1.0 });
-              s.waterRipples.push({ x: s.ball.x, y: s.ball.y, r: 16, alpha: 0.85 });
               triggerPopup(COMMENTARY.CANAL_OUT, '#EF4444');
               s.phase = 'BALL_SETTLED';
-              setTimeout(() => resolveDeliveryOutcome(0, true, '🌊', 'Kayal Splash'), 1100);
-            }
-            // 5. Ball Lost in Tall Paddy beyond the Northern Bund (y < -242) = AUTO SIX!
-            else if (s.ball.y < -242) {
+              setTimeout(() => resolveDeliveryOutcome(0, true, '🌊', undefined, false, nextBallNum), 1100);
+            } else if (s.ball.y < -242) {
+              // Tall Paddy Auto 6
               audio.playChendaBoundaryBeat();
-              s.shakeIntensity = 8;
-              s.grassFlutterTimer = 1.5;
               triggerPopup(COMMENTARY.PADDY_SIX, '#4ADE80');
-              spawnParticles(s.ball.x, s.ball.y, 18, '#84CC16', 26);
               s.phase = 'BALL_SETTLED';
-              setTimeout(() => resolveDeliveryOutcome(6, false, '6', 'Padam Auto-Sixer!'), 1100);
-            }
-            // 6. Crossed Natural Boundary (Mud Varambu / Palm Line / Stone Wall)
-            else if (distFromCenter > 248) {
+              setTimeout(() => resolveDeliveryOutcome(6, false, '6', 'Lost in Tall Paddy Six!', false, nextBallNum), 1100);
+            } else if (distFromCenter > 248) {
               audio.playChendaBoundaryBeat();
-              s.grassFlutterTimer = 1.4;
-              if (s.ball.bounces === 0) {
-                s.shakeIntensity = 9;
-                triggerPopup(COMMENTARY.SIX, '#D4AF37');
-                spawnParticles(s.ball.x, s.ball.y, 24, '#84CC16', 24);
-                s.phase = 'BALL_SETTLED';
-                setTimeout(() => resolveDeliveryOutcome(6, false, '6', 'Towering Coconut Six!'), 1050);
-              } else {
-                s.shakeIntensity = 4.5;
-                triggerPopup(COMMENTARY.FOUR, '#FACC15');
-                spawnParticles(s.ball.x, s.ball.y, 12, '#A3E635', 18);
-                s.phase = 'BALL_SETTLED';
-                setTimeout(() => resolveDeliveryOutcome(4, false, '4', 'Varambu Boundary Four'), 1000);
-              }
-            }
-            // 7. Stopped in infield or ball slowed down
-            else if (stoppedByFielder || Math.hypot(s.ball.vx, s.ball.vy) < 28) {
-              const runsEarned = distFromCenter > 130 ? 2 : distFromCenter > 52 ? 1 : 0;
-              if (runsEarned > 0) {
-                triggerPopup(COMMENTARY.RUNS, '#E2E8F0');
-              } else {
-                triggerPopup(COMMENTARY.DOT, '#94A3B8');
-              }
+              const bRuns = s.ball.bounces === 0 ? 6 : 4;
+              triggerPopup(bRuns === 6 ? COMMENTARY.SIX : COMMENTARY.FOUR, '#D4AF37');
               s.phase = 'BALL_SETTLED';
               setTimeout(
                 () =>
                   resolveDeliveryOutcome(
-                    runsEarned,
+                    bRuns,
                     false,
-                    `${runsEarned}`,
-                    runsEarned === 2 ? 'Quick Padam Double' : undefined
+                    `${bRuns}`,
+                    bRuns === 6 ? 'Towering Coconut Six!' : 'Padam Boundary Four!',
+                    false,
+                    nextBallNum
                   ),
-                850
+                1050
               );
+            } else if (stoppedByFielder || Math.hypot(s.ball.vx, s.ball.vy) < 28) {
+              const r = distFromCenter > 130 ? 2 : distFromCenter > 52 ? 1 : 0;
+              s.phase = 'BALL_SETTLED';
+              setTimeout(() => resolveDeliveryOutcome(r, false, `${r}`, undefined, false, nextBallNum), 850);
             }
           }
         }
       }
 
-      // ----------------------------------------------------------------------
-      // B. RENDER FRAME (BLIT OFFSCREEN STATIC CANVAS + ANIMATE DYNAMIC ELEMENTS)
-      // ----------------------------------------------------------------------
+      // Render Frame
       const canvas = canvasRef.current;
       if (canvas) {
         const ctx = canvas.getContext('2d');
@@ -2159,24 +2402,15 @@ export default function GullyKeralaGame() {
           const W = canvas.width;
           const H = canvas.height;
 
-          if (
-            bgDirtyRef.current ||
-            !bgCanvasRef.current ||
-            bgCanvasRef.current.width !== W ||
-            bgCanvasRef.current.height !== H
-          ) {
+          if (bgDirtyRef.current || !bgCanvasRef.current || bgCanvasRef.current.width !== W) {
             renderStaticEnvironment(W, H);
           }
 
           ctx.save();
-
           if (s.shakeIntensity > 0) {
-            const sx = (Math.random() - 0.5) * s.shakeIntensity * 2;
-            const sy = (Math.random() - 0.5) * s.shakeIntensity * 2;
-            ctx.translate(sx, sy);
+            ctx.translate((Math.random() - 0.5) * s.shakeIntensity * 2, (Math.random() - 0.5) * s.shakeIntensity * 2);
           }
 
-          // 1. Blit pre-rendered static ground & background in one fast drawImage call
           if (bgCanvasRef.current) {
             ctx.drawImage(bgCanvasRef.current, 0, 0);
           }
@@ -2184,185 +2418,34 @@ export default function GullyKeralaGame() {
           const scale = Math.min(W / 900, H / 640);
           const cx = W * 0.51;
           const cy = H * 0.57;
-          const palette = s.isMonsoon
-            ? GAME_CONFIG.COLORS.MONSOON
-            : s.timeOfDay === 'EVENING'
-            ? GAME_CONFIG.COLORS.EVENING
-            : GAME_CONFIG.COLORS.DAY;
 
           const toScreen = (wx: number, wy: number, wz: number = 0) => {
-            const depthFactor = 1 + wy * 0.00055;
-            const rx = wx * depthFactor;
+            const rx = wx * (1 + wy * 0.00055);
             const ry = wy * 0.78 - wz * 0.92;
-            return {
-              x: cx + rx * scale,
-              y: cy + ry * scale,
-            };
+            return { x: cx + rx * scale, y: cy + ry * scale };
           };
 
-          // 2. Animated Drifting Clouds & Sky Birds
-          ctx.fillStyle = s.isMonsoon
-            ? 'rgba(71, 85, 105, 0.55)'
-            : s.timeOfDay === 'EVENING'
-            ? 'rgba(251, 146, 60, 0.25)'
-            : 'rgba(255, 251, 235, 0.48)';
-          for (let i = 0; i < 5; i++) {
-            const cloudX = ((i * 290 + now * 0.009) % (W + 260)) - 130;
-            const cloudY = H * (0.05 + (i % 3) * 0.035);
-            ctx.beginPath();
-            ctx.ellipse(cloudX, cloudY, 64 * scale, 18 * scale, 0, 0, Math.PI * 2);
-            ctx.ellipse(cloudX + 32 * scale, cloudY - 6 * scale, 44 * scale, 14 * scale, 0, 0, Math.PI * 2);
-            ctx.fill();
-          }
-
-          // Render Randomized Crow & Paddy Heron Sprites Across the Sky
+          // Render Birds
           s.skyBirds.forEach((b) => {
             const bScale = scale * b.size;
             const flap = Math.sin(b.wingPhase);
             ctx.save();
             ctx.translate(b.x, b.y);
             if (b.direction === -1) ctx.scale(-1, 1);
-
-            if (b.species === 'HERON') {
-              // White Paddy Heron / Egret (Kokk): slender white body, trailing legs, S-curved neck, yellow beak, sweeping wings
-              // Trailing long legs
-              ctx.strokeStyle = '#475569';
-              ctx.lineWidth = 1.2 * bScale;
-              ctx.beginPath();
-              ctx.moveTo(-5 * bScale, 0.5 * bScale);
-              ctx.lineTo(-13 * bScale, 2.5 * bScale);
-              ctx.moveTo(-5 * bScale, 1.5 * bScale);
-              ctx.lineTo(-12 * bScale, 3.5 * bScale);
-              ctx.stroke();
-
-              // Slender white body & S-neck
-              ctx.fillStyle = s.timeOfDay === 'EVENING' ? '#E2E8F0' : '#F8FAFC';
-              ctx.beginPath();
-              ctx.ellipse(0, 0, 6.5 * bScale, 2.2 * bScale, -0.08, 0, Math.PI * 2);
-              ctx.fill();
-
-              // S-curved neck & head
-              ctx.strokeStyle = s.timeOfDay === 'EVENING' ? '#E2E8F0' : '#FFFFFF';
-              ctx.lineWidth = 2 * bScale;
-              ctx.beginPath();
-              ctx.moveTo(4.5 * bScale, -0.5 * bScale);
-              ctx.quadraticCurveTo(7 * bScale, -3.5 * bScale, 9 * bScale, -1.5 * bScale);
-              ctx.stroke();
-
-              // Pointed yellow heron beak
-              ctx.strokeStyle = '#F59E0B';
-              ctx.lineWidth = 1.3 * bScale;
-              ctx.beginPath();
-              ctx.moveTo(9 * bScale, -1.5 * bScale);
-              ctx.lineTo(13 * bScale, -1 * bScale);
-              ctx.stroke();
-
-              // Sweeping arched white wings
-              const wingTipY = flap * 8.5 * bScale;
-              const wingMidY = flap * 3.5 * bScale - 2.5 * bScale;
-              ctx.strokeStyle = s.timeOfDay === 'EVENING' ? '#CBD5E1' : '#FFFFFF';
-              ctx.lineWidth = 2.2 * bScale;
-              ctx.lineCap = 'round';
-              ctx.beginPath();
-              ctx.moveTo(-1 * bScale, 0);
-              ctx.quadraticCurveTo(-3 * bScale, wingMidY, -7 * bScale, wingTipY);
-              ctx.moveTo(1 * bScale, 0);
-              ctx.quadraticCurveTo(3 * bScale, wingMidY, 6 * bScale, wingTipY * 0.85);
-              ctx.stroke();
-            } else {
-              // Indian House Crow (Kaakka): dark charcoal/black body, fanned tail, brisk flapping wings
-              const crowColor = s.timeOfDay === 'EVENING' ? '#0F172A' : '#1C1917';
-              ctx.fillStyle = crowColor;
-              // Compact body
-              ctx.beginPath();
-              ctx.ellipse(0, 0, 5 * bScale, 2.2 * bScale, 0, 0, Math.PI * 2);
-              ctx.fill();
-
-              // Fanned tail feathers
-              ctx.beginPath();
-              ctx.moveTo(-4 * bScale, 0);
-              ctx.lineTo(-8.5 * bScale, -1.8 * bScale);
-              ctx.lineTo(-8.5 * bScale, 1.8 * bScale);
-              ctx.closePath();
-              ctx.fill();
-
-              // Head & stout beak
-              ctx.beginPath();
-              ctx.arc(5 * bScale, -1 * bScale, 2 * bScale, 0, Math.PI * 2);
-              ctx.fill();
-              ctx.strokeStyle = '#334155';
-              ctx.lineWidth = 1.3 * bScale;
-              ctx.beginPath();
-              ctx.moveTo(6.5 * bScale, -1 * bScale);
-              ctx.lineTo(9.2 * bScale, -0.5 * bScale);
-              ctx.stroke();
-
-              // Flapping dark wings
-              const wingTipY = flap * 6.5 * bScale;
-              ctx.strokeStyle = crowColor;
-              ctx.lineWidth = 2.1 * bScale;
-              ctx.lineCap = 'round';
-              ctx.beginPath();
-              ctx.moveTo(-0.5 * bScale, -0.5 * bScale);
-              ctx.quadraticCurveTo(-2 * bScale, wingTipY * 0.4 - 2 * bScale, -5.5 * bScale, wingTipY);
-              ctx.moveTo(1 * bScale, -0.5 * bScale);
-              ctx.quadraticCurveTo(3 * bScale, wingTipY * 0.4 - 2 * bScale, 5.5 * bScale, wingTipY * 0.9);
-              ctx.stroke();
-            }
-
+            ctx.fillStyle = b.species === 'HERON' ? '#F8FAFC' : '#1C1917';
+            ctx.beginPath();
+            ctx.ellipse(0, 0, 6 * bScale, 2.2 * bScale, 0, 0, Math.PI * 2);
+            ctx.fill();
             ctx.restore();
           });
 
-          // 3. Canal Water Ripples & Small Wooden Country Boat / Kettuvallam
-          s.waterRipples.forEach((rip) => {
-            const rp = toScreen(rip.x, rip.y, 0);
-            ctx.strokeStyle = `rgba(214, 211, 209, ${rip.alpha * 0.65})`;
-            ctx.lineWidth = 1.4 * scale;
-            ctx.beginPath();
-            ctx.ellipse(rp.x, rp.y, rip.r * scale, rip.r * 0.55 * scale, 0, 0, Math.PI * 2);
-            ctx.stroke();
-          });
-
-          const boatWorldX = getCanalBankX(s.boatY) - 42;
-          const boatPt = toScreen(boatWorldX, s.boatY, 0);
-          ctx.save();
-          ctx.translate(boatPt.x, boatPt.y);
-          ctx.rotate(0.12);
-          // Proportionate wooden country vallam / small kettuvallam
-          ctx.fillStyle = '#3E2723';
-          ctx.beginPath();
-          ctx.moveTo(-8 * scale, -22 * scale);
-          ctx.quadraticCurveTo(8 * scale, 0, -5 * scale, 22 * scale);
-          ctx.quadraticCurveTo(-14 * scale, 0, -8 * scale, -22 * scale);
-          ctx.fill();
-          // Woven thatch canopy
-          ctx.fillStyle = '#A16207';
-          ctx.beginPath();
-          ctx.ellipse(-6 * scale, 0, 5.5 * scale, 11 * scale, 0, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.restore();
-
-          // 4. Simple Wooden Stick Stumps (One slightly bent!) with Tiny Shadows
+          // Draw Stumps
           const drawStickStumps = (wy: number) => {
-            const configs = [
-              { ox: -5.5, tilt: -0.5, h: 19 },
-              { ox: 0, tilt: 0.3, h: 19.5 },
-              { ox: 5.5, tilt: 2.4, h: 18 }, // Slightly bent wooden stick!
-            ];
-            configs.forEach((st) => {
-              const base = toScreen(st.ox, wy, 0);
-              const top = toScreen(st.ox + st.tilt, wy, st.h);
-              // Tiny shadow under each stick
-              ctx.strokeStyle = palette.shadowColor;
-              ctx.lineWidth = 2 * scale;
-              ctx.beginPath();
-              ctx.moveTo(base.x, base.y);
-              ctx.lineTo(base.x - 8 * scale, base.y + 3 * scale);
-              ctx.stroke();
-              // Peeled wooden stick stump
+            [-5.5, 0, 5.5].forEach((ox) => {
+              const base = toScreen(ox, wy, 0);
+              const top = toScreen(ox, wy, 19);
               ctx.strokeStyle = '#D6B88A';
               ctx.lineWidth = 2.2 * scale;
-              ctx.lineCap = 'round';
               ctx.beginPath();
               ctx.moveTo(base.x, base.y);
               ctx.lineTo(top.x, top.y);
@@ -2370,282 +2453,48 @@ export default function GullyKeralaGame() {
             });
           };
           drawStickStumps(-122);
+          drawStickStumps(108);
 
-          // 5. Short Ball-Trajectory Indicator & Aim Cone
-          if (s.screen === 'PLAYING' && (s.phase === 'RUNUP' || s.phase === 'BOWLING')) {
-            const bounceY = s.ballType === 'BOUNCER' ? -20 : 20;
-            const spinX = s.ballSpinCurve;
-            const startPt = toScreen(5, -122, 24);
-            const bouncePt = toScreen(2, bounceY, 0);
-            const endPt = toScreen(spinX, 100, s.ballType === 'BOUNCER' ? 28 : 14);
-
+          // Draw Cricketers
+          const drawPlayer = (wx: number, wy: number, lungi: string, shirt: string, isBatter = false) => {
+            const p = toScreen(wx, wy, 0);
             ctx.save();
-            ctx.strokeStyle =
-              s.ballType === 'FAST'
-                ? 'rgba(239, 68, 68, 0.65)'
-                : s.ballType === 'SPIN'
-                ? 'rgba(168, 85, 247, 0.65)'
-                : s.ballType === 'BOUNCER'
-                ? 'rgba(249, 115, 22, 0.65)'
-                : 'rgba(56, 189, 248, 0.65)';
-            ctx.lineWidth = 2.2 * scale;
-            ctx.setLineDash([5 * scale, 5 * scale]);
-            ctx.beginPath();
-            ctx.moveTo(startPt.x, startPt.y);
-            ctx.quadraticCurveTo((startPt.x + bouncePt.x) * 0.5, bouncePt.y - 16 * scale, bouncePt.x, bouncePt.y);
-            ctx.lineTo(endPt.x, endPt.y);
-            ctx.stroke();
-            ctx.setLineDash([]);
-            ctx.beginPath();
-            ctx.ellipse(bouncePt.x, bouncePt.y, 9 * scale, 5 * scale, 0, 0, Math.PI * 2);
-            ctx.stroke();
-            ctx.restore();
-          }
-
-          if (s.screen === 'PLAYING') {
-            const batterBase = toScreen(0, 98, 0);
-            const targetWorldX = s.aimDir === -1 ? -145 : s.aimDir === 1 ? 145 : 0;
-            const targetWorldY = s.aimDir === 0 ? -185 : -90;
-            const aimTarget = toScreen(targetWorldX, targetWorldY, 0);
-
-            ctx.save();
-            ctx.strokeStyle = 'rgba(250, 204, 21, 0.35)';
-            ctx.lineWidth = 2 * scale;
-            ctx.setLineDash([4 * scale, 6 * scale]);
-            ctx.beginPath();
-            ctx.moveTo(batterBase.x, batterBase.y);
-            ctx.lineTo(aimTarget.x, aimTarget.y);
-            ctx.stroke();
-            ctx.restore();
-          }
-
-          // 6. Animated Life & Detail: Spectators under Banyan Tree & on Stone Wall,
-          //    Tied Goat, Pecking Hens, Wandering Dog, Crows on Tin Roof
-          // Spectators under the Banyan Tree (Uncles in mundu, Woman with umbrella)
-          const banyanSpec = toScreen(-158, -222, 0);
-          ctx.save();
-          ctx.translate(banyanSpec.x, banyanSpec.y);
-          // Uncle in white mundu
-          ctx.fillStyle = '#FDFBF2';
-          ctx.fillRect(-14 * scale, -10 * scale, 7 * scale, 9 * scale);
-          ctx.fillStyle = '#0284C7';
-          ctx.fillRect(-14 * scale, -19 * scale, 7 * scale, 9 * scale);
-          ctx.fillStyle = '#7C2D12';
-          ctx.beginPath();
-          ctx.arc(-10.5 * scale, -22 * scale, 3.2 * scale, 0, Math.PI * 2);
-          ctx.fill();
-
-          // Woman with black monsoon/sun umbrella
-          ctx.fillStyle = '#BE185D';
-          ctx.fillRect(4 * scale, -18 * scale, 7 * scale, 16 * scale);
-          ctx.fillStyle = '#1C1917';
-          ctx.beginPath();
-          ctx.arc(7.5 * scale, -24 * scale, 12 * scale, Math.PI, 0);
-          ctx.fill();
-          ctx.restore();
-
-          // Spectators on Stone Wall (Kids in blue/white school uniforms & Uncle in lungi)
-          const wallStart = toScreen(185, 175, 0);
-          const wallEnd = toScreen(275, 85, 0);
-          [0.22, 0.5, 0.78].forEach((t, idx) => {
-            const sx = wallStart.x + (wallEnd.x - wallStart.x) * t;
-            const sy = wallStart.y + (wallEnd.y - wallStart.y) * t - 6 * scale;
-            const cheer = s.popupTimer > 1.2 ? Math.abs(Math.sin(now * 0.015 + idx)) * 6 * scale : 0;
-            // School kids (white shirt + navy shorts) & Uncle
-            ctx.fillStyle = idx < 2 ? '#1E3A8A' : '#15803D';
-            ctx.fillRect(sx - 4 * scale, sy - 8 * scale - cheer, 8 * scale, 7 * scale);
-            ctx.fillStyle = idx < 2 ? '#F8FAFC' : '#FDE047';
-            ctx.fillRect(sx - 4.5 * scale, sy - 16 * scale - cheer, 9 * scale, 9 * scale);
-            ctx.fillStyle = '#7C2D12';
-            ctx.beginPath();
-            ctx.arc(sx, sy - 20 * scale - cheer, 3.8 * scale, 0, Math.PI * 2);
-            ctx.fill();
-          });
-
-          // Goat tied near the mud varambu bund
-          const pegPos = toScreen(148, -222, 0);
-          const goatPos = toScreen(s.goat.x, s.goat.y, 0);
-          ctx.strokeStyle = '#A8A29E';
-          ctx.lineWidth = 1 * scale;
-          ctx.beginPath();
-          ctx.moveTo(pegPos.x, pegPos.y);
-          ctx.lineTo(goatPos.x, goatPos.y - 6 * scale);
-          ctx.stroke();
-
-          ctx.save();
-          ctx.translate(goatPos.x, goatPos.y);
-          ctx.fillStyle = '#F5F5F4';
-          ctx.fillRect(-8 * scale, -10 * scale, 14 * scale, 7 * scale);
-          ctx.fillRect(4 * scale, -15 * scale, 5 * scale, 6 * scale);
-          ctx.strokeStyle = '#D6D3D1';
-          ctx.lineWidth = 1.6 * scale;
-          ctx.beginPath();
-          ctx.moveTo(-6 * scale, -3 * scale);
-          ctx.lineTo(-6 * scale, 2 * scale);
-          ctx.moveTo(4 * scale, -3 * scale);
-          ctx.lineTo(4 * scale, 2 * scale);
-          ctx.stroke();
-          if (s.goat.pauseTimer > 0) {
-            ctx.font = `700 ${Math.round(11 * scale)}px sans-serif`;
-            ctx.fillStyle = '#FDE047';
-            ctx.fillText('Baa! 🐐', -8 * scale, -20 * scale);
-          }
-          ctx.restore();
-
-          // Pecking Hens
-          s.hens.forEach((h) => {
-            const hp = toScreen(h.x, h.y, 0);
-            const peck = Math.sin(now * 0.012 + h.phase) * 2.5 * scale;
-            ctx.fillStyle = '#B45309';
-            ctx.beginPath();
-            ctx.arc(hp.x, hp.y - 3 * scale, 4 * scale, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.fillStyle = '#DC2626';
-            ctx.beginPath();
-            ctx.arc(hp.x + 3.5 * scale, hp.y - 4.5 * scale + peck, 1.8 * scale, 0, Math.PI * 2);
-            ctx.fill();
-          });
-
-          // Wandering Village Dog (Naadan Pattikutty)
-          const dogPos = toScreen(s.dog.x, s.dog.y, 0);
-          ctx.save();
-          ctx.translate(dogPos.x, dogPos.y);
-          if (s.dog.vx < 0) ctx.scale(-1, 1);
-          ctx.fillStyle = '#A16207';
-          ctx.fillRect(-7 * scale, -8 * scale, 13 * scale, 5.5 * scale);
-          ctx.fillRect(4 * scale, -12 * scale, 5 * scale, 5 * scale);
-          // Wagging curled tail
-          const wag = Math.sin(now * 0.02) * 2 * scale;
-          ctx.strokeStyle = '#A16207';
-          ctx.lineWidth = 1.6 * scale;
-          ctx.beginPath();
-          ctx.moveTo(-7 * scale, -7 * scale);
-          ctx.quadraticCurveTo(-11 * scale, -13 * scale + wag, -8 * scale, -14 * scale);
-          ctx.stroke();
-          ctx.restore();
-
-          // Crows on the Chayakada Tin Roof
-          s.crows.forEach((c, idx) => {
-            if (c.flying > 0) c.flying = Math.max(0, c.flying - dt);
-            const flyLift = c.flying > 0 ? Math.sin(c.flying * 3) * 28 : 0;
-            const cp = toScreen(c.x, c.y, 38 + flyLift);
-            const hop = Math.abs(Math.sin(now * 0.004 + c.hopPhase)) * 2 * scale;
-            ctx.fillStyle = '#0F172A';
-            ctx.beginPath();
-            ctx.ellipse(cp.x, cp.y - hop, 4 * scale, 2.5 * scale, -0.2, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.beginPath();
-            ctx.arc(cp.x + 3.5 * scale, cp.y - 2 * scale - hop, 2 * scale, 0, Math.PI * 2);
-            ctx.fill();
-            if (idx === 0 && c.flying > 0) {
-              ctx.font = `700 ${Math.round(10 * scale)}px sans-serif`;
-              ctx.fillStyle = '#E2E8F0';
-              ctx.fillText('Kaa!', cp.x, cp.y - 12 * scale);
-            }
-          });
-
-          // 7. Proportionate Village Cricketers (Long Shadows, Unsquashed Proportions)
-          const drawVillageCricketer = (
-            wx: number,
-            wy: number,
-            lungiColor: string,
-            shirtColor: string,
-            isUncle: boolean,
-            isBatter = false
-          ) => {
-            const pos = toScreen(wx, wy, 0);
-            ctx.save();
-            ctx.translate(pos.x, pos.y);
-
-            // Long golden-hour shadow cast across the padam
-            ctx.fillStyle = palette.shadowColor;
-            ctx.beginPath();
-            ctx.ellipse(-9 * scale, 2 * scale, 13 * scale, 4 * scale, -0.15, 0, Math.PI * 2);
-            ctx.fill();
-
-            // Bare feet & legs
-            ctx.strokeStyle = '#7C2D12';
-            ctx.lineWidth = 2.2 * scale;
-            ctx.beginPath();
-            ctx.moveTo(-3 * scale, -7 * scale);
-            ctx.lineTo(-3 * scale, 0);
-            ctx.moveTo(3 * scale, -7 * scale);
-            ctx.lineTo(3 * scale, 0);
-            ctx.stroke();
-
-            // Folded Mundu / Lungi
-            ctx.fillStyle = lungiColor;
+            ctx.translate(p.x, p.y);
+            ctx.fillStyle = lungi;
             ctx.fillRect(-6.5 * scale, -18 * scale, 13 * scale, 12 * scale);
-            ctx.fillStyle = '#D4AF37';
-            ctx.fillRect(-6.5 * scale, -8 * scale, 13 * scale, 1.8 * scale);
-
-            // Proportionate Torso / T-Shirt
-            ctx.fillStyle = shirtColor;
-            ctx.beginPath();
-            ctx.roundRect(-7.5 * scale, -33 * scale, 15 * scale, 16 * scale, 3 * scale);
-            ctx.fill();
-
-            // Head & Hair
+            ctx.fillStyle = shirt;
+            ctx.fillRect(-7.5 * scale, -33 * scale, 15 * scale, 16 * scale);
             ctx.fillStyle = '#7C2D12';
             ctx.beginPath();
-            ctx.arc(0, -39.5 * scale, 5.5 * scale, 0, Math.PI * 2);
+            ctx.arc(0, -39 * scale, 5.5 * scale, 0, Math.PI * 2);
             ctx.fill();
-            ctx.fillStyle = '#1C1917';
-            ctx.beginPath();
-            ctx.arc(0, -41 * scale, 5.5 * scale, Math.PI, 0);
-            ctx.fill();
-
-            if (isUncle) {
-              ctx.strokeStyle = '#0F172A';
-              ctx.lineWidth = 1.8 * scale;
-              ctx.beginPath();
-              ctx.moveTo(-3.5 * scale, -37.5 * scale);
-              ctx.lineTo(3.5 * scale, -37.5 * scale);
-              ctx.stroke();
-            }
 
             if (isBatter) {
-              ctx.save();
-              const swingRot = s.batSwingAnim > 0 ? -Math.sin(s.batSwingAnim * Math.PI) * 1.65 : 0.32;
+              const rot = s.batSwingAnim > 0 ? -Math.sin(s.batSwingAnim * Math.PI) * 1.6 : 0.32;
               ctx.translate(7 * scale, -26 * scale);
-              ctx.rotate(swingRot);
+              ctx.rotate(rot);
               ctx.fillStyle = '#B45309';
-              ctx.fillRect(-2.2 * scale, 0, 4.4 * scale, 22 * scale);
-              ctx.fillStyle = '#F5F5F4';
-              ctx.fillRect(-1.4 * scale, -6 * scale, 2.8 * scale, 6 * scale);
-              ctx.restore();
+              ctx.fillRect(-2 * scale, 0, 4 * scale, 22 * scale);
             }
-
             ctx.restore();
           };
 
-          s.fielders.forEach((f) => {
-            drawVillageCricketer(f.x, f.y, f.lungiColor, f.shirtColor, f.isUncle, false);
-          });
+          // Fielders
+          s.fielders.forEach((f) => drawPlayer(f.x, f.y, f.lungiColor, f.shirtColor));
 
+          // Bowler & Batter
           const bowlerY = s.phase === 'RUNUP' ? -170 + (1 - Math.max(0, s.phaseTimer)) * 48 : -122;
-          drawVillageCricketer(5, bowlerY, '#FDFBF2', '#0369A1', true, false);
+          drawPlayer(5, bowlerY, '#FDFBF2', '#0369A1');
 
-          const activeBatsman =
-            GAME_CONFIG.BATSMEN.find((b) => b.id === s.batsmanId) || GAME_CONFIG.BATSMEN[0];
-          drawVillageCricketer(
-            -8,
-            98,
-            activeBatsman.munduColor,
-            activeBatsman.shirtColor,
-            s.batsmanId === 'ammachi' ? false : true,
-            true
-          );
+          const activeBatsman = GAME_CONFIG.BATSMEN.find((b) => b.id === s.batsmanId) || GAME_CONFIG.BATSMEN[0];
+          drawPlayer(-8, 98, activeBatsman.munduColor, activeBatsman.shirtColor, true);
 
-          // Batter End Wooden Stick Stumps
-          drawStickStumps(108);
-
-          // 8. Cricket Ball, Ground Shadow & Sweet-Spot Timing Ring
+          // Ball & Shadow
           if (s.screen === 'PLAYING') {
             const shadowPt = toScreen(s.ball.x, s.ball.y, 0);
             const ballPt = toScreen(s.ball.x, s.ball.y, s.ball.z);
 
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.38)';
+            ctx.fillStyle = 'rgba(0,0,0,0.38)';
             ctx.beginPath();
             ctx.ellipse(shadowPt.x, shadowPt.y, 4.8 * scale, 2.6 * scale, 0, 0, Math.PI * 2);
             ctx.fill();
@@ -2654,102 +2503,42 @@ export default function GullyKeralaGame() {
             ctx.beginPath();
             ctx.arc(ballPt.x, ballPt.y, 5.2 * scale, 0, Math.PI * 2);
             ctx.fill();
-            ctx.strokeStyle = '#FEF08A';
-            ctx.lineWidth = 1.1 * scale;
-            ctx.stroke();
-
-            if (s.phase === 'BOWLING') {
-              const sweetCenter = toScreen(0, 94, 12);
-              const distToSweet = Math.abs(s.ballProgress - GAME_CONFIG.DIFFICULTY.SWEET_SPOT);
-              const ringColor =
-                distToSweet <= GAME_CONFIG.DIFFICULTY.PERFECT_WINDOW
-                  ? '#4ADE80'
-                  : distToSweet <= GAME_CONFIG.DIFFICULTY.GOOD_WINDOW
-                  ? '#FACC15'
-                  : 'rgba(255,255,255,0.35)';
-
-              ctx.strokeStyle = ringColor;
-              ctx.lineWidth = 2.2 * scale;
-              ctx.beginPath();
-              ctx.arc(
-                sweetCenter.x,
-                sweetCenter.y,
-                Math.max(8, (1 - s.ballProgress) * 90) * scale,
-                0,
-                Math.PI * 2
-              );
-              ctx.stroke();
-            }
           }
 
-          // 9. Animated Swaying Coconut Palm Fronds (Trunks pre-rendered on offscreen canvas)
-          const boundaryFlutter = s.grassFlutterTimer > 0 ? Math.sin(now * 0.03) * 5 : 0;
-          palmsRef.current.forEach((palm) => {
-            const top = toScreen(palm.wx + palm.lean, palm.wy, palm.height);
-            const windSway = Math.sin(now * 0.0022 + palm.seed) * 5 + boundaryFlutter;
-
-            // Tender coconuts cluster
-            ctx.fillStyle = s.timeOfDay === 'EVENING' ? '#451A03' : '#A16207';
-            ctx.beginPath();
-            ctx.arc(top.x - 3 * scale, top.y + 3 * scale, 3.2 * scale, 0, Math.PI * 2);
-            ctx.arc(top.x + 3 * scale, top.y + 3 * scale, 3.2 * scale, 0, Math.PI * 2);
-            ctx.fill();
-
-            // Swaying Fronds
-            const frondAngles = [-2.7, -2.15, -1.55, -0.95, -0.4, 0.15, 0.55];
-            ctx.strokeStyle = s.timeOfDay === 'EVENING' ? '#142E18' : '#15803D';
-            ctx.lineWidth = 3.2 * scale;
-            ctx.lineCap = 'round';
-            frondAngles.slice(0, palm.frondCount).forEach((ang, idx) => {
-              const fx = top.x + Math.cos(ang) * 35 * scale + windSway * scale;
-              const fy = top.y + Math.sin(ang) * 24 * scale + (idx % 2) * 5 * scale;
-              ctx.beginPath();
-              ctx.moveTo(top.x, top.y);
-              ctx.quadraticCurveTo((top.x + fx) * 0.5, top.y - 10 * scale, fx, fy);
-              ctx.stroke();
-            });
-          });
-
-          // 10. Render Dust Puffs & Boundary Grass Flutter Particles
+          // Particles
           s.particles.forEach((p) => {
             const pt = toScreen(p.x, p.y, p.z);
             ctx.fillStyle = p.color;
-            ctx.globalAlpha = Math.max(0, 1 - p.life / p.maxLife);
             ctx.beginPath();
             ctx.arc(pt.x, pt.y, p.size * scale, 0, Math.PI * 2);
             ctx.fill();
           });
-          ctx.globalAlpha = 1;
 
-          // 11. Monsoon Rain Streaks
-          if (s.isMonsoon) {
-            ctx.strokeStyle = 'rgba(203, 213, 225, 0.42)';
-            ctx.lineWidth = 1.3;
-            ctx.beginPath();
-            s.rain.forEach((drop) => {
-              ctx.moveTo(drop.x, drop.y);
-              ctx.lineTo(drop.x - drop.len * 0.32, drop.y + drop.len);
-            });
-            ctx.stroke();
-          }
-
-          // 12. Manglish Commentary Pop-up Banner
-          if (s.popupTimer > 0 && s.popupText) {
-            const alpha = Math.min(1, s.popupTimer * 2);
+          // Floating Emotes Render
+          activeEmotes.forEach((em) => {
             ctx.save();
-            ctx.globalAlpha = alpha;
-            ctx.translate(W * 0.5, H * 0.21);
+            ctx.globalAlpha = em.alpha;
+            ctx.fillStyle = em.color || '#EAB308';
+            ctx.font = `800 ${Math.round(20 * scale)}px sans-serif`;
+            ctx.fillText(em.text, em.x, em.y);
+            ctx.font = `600 ${Math.round(11 * scale)}px sans-serif`;
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillText(em.sender, em.x, em.y - 18 * scale);
+            ctx.restore();
+          });
 
-            ctx.font = `800 ${Math.round(28 * scale)}px var(--font-display), sans-serif`;
+          // Popup Banner
+          if (s.popupTimer > 0 && s.popupText) {
+            ctx.save();
+            ctx.globalAlpha = Math.min(1, s.popupTimer * 2);
+            ctx.translate(W * 0.5, H * 0.21);
+            ctx.font = `800 ${Math.round(26 * scale)}px var(--font-display), sans-serif`;
             ctx.textAlign = 'center';
-            ctx.fillStyle = '#0F172A';
-            ctx.fillText(s.popupText, 2, 2);
             ctx.fillStyle = s.popupColor;
             ctx.fillText(s.popupText, 0, 0);
-
-            ctx.font = `600 ${Math.round(14 * scale)}px var(--font-sans), sans-serif`;
+            ctx.font = `600 ${Math.round(13 * scale)}px sans-serif`;
             ctx.fillStyle = '#FDFBF2';
-            ctx.fillText(s.popupSub, 0, 24 * scale);
+            ctx.fillText(s.popupSub, 0, 22 * scale);
             ctx.restore();
           }
 
@@ -2762,9 +2551,9 @@ export default function GullyKeralaGame() {
 
     animId = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(animId);
-  }, [initFielders, renderStaticEnvironment, resolveDeliveryOutcome]);
+  }, [activeEmotes, confirmBowlingDelivery, initFielders, renderStaticEnvironment, resolveDeliveryOutcome]);
 
-  // Handle responsive full-viewport canvas sizing
+  // Handle window resize
   useEffect(() => {
     const updateSize = () => {
       if (canvasRef.current) {
@@ -2778,21 +2567,13 @@ export default function GullyKeralaGame() {
     return () => window.removeEventListener('resize', updateSize);
   }, []);
 
-  // Derived Score Metrics
   const oversFormatted = `${Math.floor(hud.balls / 6)}.${hud.balls % 6} / ${overs}.0`;
   const strikeRate = hud.balls > 0 ? Math.round((hud.runs / hud.balls) * 100) : 0;
   const reqRuns = hud.target !== null ? Math.max(0, hud.target - hud.runs) : null;
   const ballsLeft = Math.max(0, hud.totalBalls - hud.balls);
-  const currentRival =
-    mode === 'TOURNAMENT'
-      ? GAME_CONFIG.RIVALS[sessionStats.tournamentStage]
-      : GAME_CONFIG.RIVALS[selectedRivalIdx];
 
   return (
     <div className="relative w-screen h-screen overflow-hidden select-none bg-[#1c2414] font-sans">
-      {/* ===================================================================
-          ISOLATED 60FPS FULL-VIEWPORT CANVAS
-          =================================================================== */}
       <canvas
         ref={canvasRef}
         onClick={() => {
@@ -2801,15 +2582,13 @@ export default function GullyKeralaGame() {
         className="block w-full h-full cursor-pointer"
       />
 
-      {/* ===================================================================
-          PERIMETER HUD (WORLD-MATCHED, LOW-OCCLUSION <15% VIEWPORT)
-          =================================================================== */}
+      {/* TOP PERIMETER HUD */}
       <div className="pointer-events-none fixed inset-x-0 top-0 z-20 flex items-start justify-between px-4 py-3 md:px-6">
         {screen === 'PLAYING' ? (
-          <div className="pointer-events-auto flex flex-wrap items-center gap-4 rounded-xl bg-[#0b1f11]/85 border border-[#d4af37]/40 px-4 py-2.5 shadow-lg">
+          <div className="pointer-events-auto flex flex-wrap items-center gap-4 rounded-xl bg-[#0b1f11]/90 border border-[#d4af37]/40 px-4 py-2.5 shadow-lg">
             <div>
-              <div className="text-[11px] font-medium text-[#d4af37]">
-                SCORE · സ്കോർ
+              <div className="text-[10px] font-medium text-[#d4af37]">
+                {mode === 'MULTIPLAYER' ? `${currentBattingName} (BAT)` : 'SCORE · സ്കോർ'}
               </div>
               <div className="font-mono text-2xl font-bold tabular-nums text-[#fdfbf2]">
                 {hud.runs}/{hud.wickets}
@@ -2819,22 +2598,11 @@ export default function GullyKeralaGame() {
             <div className="h-8 w-px bg-[#d4af37]/25" />
 
             <div>
-              <div className="text-[11px] font-medium text-[#d4af37]">
-                OVERS · ഓവർ
+              <div className="text-[10px] font-medium text-[#d4af37]">
+                {mode === 'MULTIPLAYER' ? `INNINGS ${currentInnings}/2` : 'OVERS · ഓവർ'}
               </div>
-              <div className="font-mono text-lg font-semibold tabular-nums text-[#fdfbf2]">
+              <div className="font-mono text-base font-semibold tabular-nums text-[#fdfbf2]">
                 {oversFormatted}
-              </div>
-            </div>
-
-            <div className="h-8 w-px bg-[#d4af37]/25" />
-
-            <div>
-              <div className="text-[11px] font-medium text-[#d4af37]">
-                SR · സ്ട്രൈക്ക് റേറ്റ്
-              </div>
-              <div className="font-mono text-lg font-semibold tabular-nums text-[#fdfbf2]">
-                {strikeRate}
               </div>
             </div>
 
@@ -2842,22 +2610,22 @@ export default function GullyKeralaGame() {
               <>
                 <div className="h-8 w-px bg-[#d4af37]/25" />
                 <div>
-                  <div className="text-[11px] font-medium text-amber-300">
-                    NEED · ലക്ഷ്യം ({hud.target})
+                  <div className="text-[10px] font-medium text-amber-300">
+                    TARGET: {hud.target}
                   </div>
                   <div className="font-mono text-sm font-bold tabular-nums text-amber-200">
-                    {reqRuns} in {ballsLeft}b
+                    Need {reqRuns} in {ballsLeft}b
                   </div>
                 </div>
               </>
             )}
 
-            <div className="hidden sm:flex items-center gap-1.5 pl-2">
-              <span className="text-xs text-[#d4af37]">Delivery:</span>
-              <span className="font-mono text-xs font-bold text-white">
-                {hud.bowlerType}
-              </span>
-            </div>
+            {mode === 'MULTIPLAYER' && (
+              <div className="hidden sm:flex items-center gap-1.5 pl-2 text-xs text-[#d4af37]">
+                <span>Bowl:</span>
+                <strong className="text-white">{currentBowlingName}</strong>
+              </div>
+            )}
           </div>
         ) : (
           <div className="pointer-events-auto flex items-center gap-3 rounded-xl bg-[#0b1f11]/85 border border-[#d4af37]/40 px-3.5 py-2">
@@ -2868,34 +2636,44 @@ export default function GullyKeralaGame() {
           </div>
         )}
 
-        {/* Right Perimeter Environment & Audio Controls (Day / Evening / Monsoon) */}
+        {/* Right Controls */}
         <div className="pointer-events-auto flex items-center gap-2">
+          {mode === 'MULTIPLAYER' && (
+            <div className="flex items-center gap-1.5 rounded-lg bg-[#0b1f11]/85 border border-[#d4af37]/40 px-2.5 py-1.5 text-xs">
+              {isConnected ? (
+                <>
+                  <Wifi className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="text-emerald-300 font-mono text-[11px]">
+                    {activeRoomCode ? `${activeRoomCode} · ` : ''}{pingMs ? `${pingMs}ms` : '2-Device Live'}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <WifiOff className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="text-amber-300 text-[11px]">
+                    {activeRoomCode ? `Room ${activeRoomCode} · Waiting...` : 'Waiting for Device 2...'}
+                  </span>
+                </>
+              )}
+            </div>
+          )}
+
           <button
             type="button"
             onClick={() => setTimeOfDay((v) => (v === 'DAY' ? 'EVENING' : 'DAY'))}
-            className="flex items-center gap-1.5 rounded-lg bg-[#0b1f11]/85 border border-[#d4af37]/40 px-3 py-2 text-xs font-semibold text-[#fdfbf2] hover:bg-[#14361b] transition-colors whitespace-nowrap shrink-0"
-            title="Toggle Golden Hour Day / Sunset Evening"
+            className="flex items-center gap-1.5 rounded-lg bg-[#0b1f11]/85 border border-[#d4af37]/40 px-3 py-2 text-xs font-semibold text-[#fdfbf2]"
           >
-            {timeOfDay === 'EVENING' ? (
-              <Sunset className="w-4 h-4 text-orange-400" />
-            ) : (
-              <Sun className="w-4 h-4 text-amber-400" />
-            )}
-            <span className="hidden sm:inline">{timeOfDay === 'EVENING' ? 'Evening' : 'Day'}</span>
+            {timeOfDay === 'EVENING' ? <Sunset className="w-4 h-4 text-orange-400" /> : <Sun className="w-4 h-4 text-amber-400" />}
           </button>
 
           <button
             type="button"
             onClick={() => setIsMonsoon((v) => !v)}
-            className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
-              isMonsoon
-                ? 'bg-slate-800/90 border-sky-400 text-sky-100'
-                : 'bg-[#0b1f11]/85 border-[#d4af37]/40 text-[#fdfbf2] hover:bg-[#14361b]'
+            className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold ${
+              isMonsoon ? 'bg-slate-800 border-sky-400 text-sky-100' : 'bg-[#0b1f11]/85 border-[#d4af37]/40 text-[#fdfbf2]'
             }`}
-            title="Toggle Monsoon Rain Mode"
           >
             <CloudRain className="w-4 h-4 text-sky-300" />
-            <span className="hidden sm:inline">{isMonsoon ? 'Monsoon ON' : 'Monsoon'}</span>
           </button>
 
           <button
@@ -2904,32 +2682,174 @@ export default function GullyKeralaGame() {
               audio.muted = !isMuted;
               setIsMuted(!isMuted);
             }}
-            className="flex items-center gap-1.5 rounded-lg bg-[#0b1f11]/85 border border-[#d4af37]/40 px-3 py-2 text-xs font-semibold text-[#fdfbf2] hover:bg-[#14361b] transition-colors whitespace-nowrap shrink-0"
-            title="Toggle Mute (M)"
+            className="flex items-center gap-1.5 rounded-lg bg-[#0b1f11]/85 border border-[#d4af37]/40 px-3 py-2 text-xs font-semibold text-[#fdfbf2]"
           >
             {isMuted ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4 text-[#d4af37]" />}
           </button>
-
-          {screen === 'PLAYING' && (
-            <button
-              type="button"
-              onClick={() => {
-                simRef.current.screen = 'PAUSED';
-                setScreen('PAUSED');
-              }}
-              className="flex items-center gap-1.5 rounded-lg bg-[#0b1f11]/85 border border-[#d4af37]/40 px-3 py-2 text-xs font-semibold text-[#fdfbf2] hover:bg-[#14361b] transition-colors whitespace-nowrap shrink-0"
-              title="Pause Game (Esc)"
-            >
-              <Pause className="w-4 h-4 text-[#d4af37]" />
-            </button>
-          )}
         </div>
       </div>
 
-      {/* ===================================================================
-          ACTIVE PLAY BOTTOM CONTROLS
-          =================================================================== */}
+      {/* FLOATING EMOTE BAR */}
       {screen === 'PLAYING' && (
+        <div className="fixed top-16 right-4 z-20 flex flex-col gap-1.5 pointer-events-auto">
+          {MP_EMOTES.map((em) => (
+            <button
+              key={em.id}
+              disabled={emoteCooldown}
+              onClick={() => triggerEmote(em.text, isLocalPlayerBatting ? currentBattingName : currentBowlingName, em.color)}
+              className="px-2.5 py-1 text-xs font-bold rounded-lg bg-[#0b1f11]/80 border border-[#d4af37]/30 text-[#fdfbf2] hover:bg-[#14361b] active:scale-95 disabled:opacity-50 transition-all text-right"
+            >
+              {em.text}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* BOWLING DEVICE: 3-SECOND SECRET DELIVERY SELECTION STRIP (DOCKS AT BOTTOM) */}
+      {screen === 'PLAYING' && isBowlerChoosing && isLocalPlayerBowling && (
+        <div className="fixed inset-x-0 bottom-0 z-30 bg-[#0b1f11]/95 border-t-2 border-[#d4af37] p-3 text-[#fdfbf2] shadow-2xl">
+          <div className="max-w-3xl mx-auto space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-bold text-[#d4af37]">
+                🎯 YOUR TURN TO BOWL · {currentBowlingName} (Secretly pick in {bowlerChoiceTimer.toFixed(1)}s)
+              </span>
+              <div className="w-32 bg-stone-700 h-2 rounded-full overflow-hidden">
+                <div
+                  className="bg-amber-400 h-full transition-all duration-100"
+                  style={{ width: `${(bowlerChoiceTimer / 3) * 100}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 text-xs">
+              {/* Variation */}
+              <div>
+                <div className="text-[10px] text-stone-400 mb-1">VARIATION:</div>
+                <div className="grid grid-cols-2 gap-1">
+                  {(['FAST', 'SPIN', 'SLOWER', 'BOUNCER'] as BowlingVariation[]).map((v) => (
+                    <button
+                      key={v}
+                      onClick={() => setBowlerVariation(v)}
+                      className={`py-1.5 px-2 rounded font-bold text-[11px] border ${
+                        bowlerVariation === v ? 'bg-[#d4af37] text-black border-amber-300' : 'bg-stone-800 border-stone-700'
+                      }`}
+                    >
+                      {v}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Line */}
+              <div>
+                <div className="text-[10px] text-stone-400 mb-1">LINE:</div>
+                <div className="grid grid-cols-3 gap-1">
+                  {(['OFF', 'MIDDLE', 'LEG'] as BowlingLine[]).map((l) => (
+                    <button
+                      key={l}
+                      onClick={() => setBowlerLine(l)}
+                      className={`py-1.5 px-1 rounded font-bold text-[11px] border ${
+                        bowlerLine === l ? 'bg-[#d4af37] text-black border-amber-300' : 'bg-stone-800 border-stone-700'
+                      }`}
+                    >
+                      {l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Length */}
+              <div>
+                <div className="text-[10px] text-stone-400 mb-1">LENGTH:</div>
+                <div className="grid grid-cols-3 gap-1">
+                  {(['SHORT', 'GOOD', 'FULL'] as BowlingLength[]).map((len) => (
+                    <button
+                      key={len}
+                      onClick={() => setBowlerLength(len)}
+                      className={`py-1.5 px-1 rounded font-bold text-[11px] border ${
+                        bowlerLength === len ? 'bg-[#d4af37] text-black border-amber-300' : 'bg-stone-800 border-stone-700'
+                      }`}
+                    >
+                      {len}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="text-center pt-1">
+              <button
+                onClick={() => confirmBowlingDelivery()}
+                className="w-full py-2 bg-gradient-to-r from-amber-500 to-amber-600 text-black font-extrabold rounded-lg text-xs"
+              >
+                CONFIRM SECRET DELIVERY & BOWL TO {currentBattingName.toUpperCase()}!
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* BATTING DEVICE: WAITING BANNER WHILE BOWLER CHOOSES ON THE OTHER DEVICE */}
+      {screen === 'PLAYING' && isBowlerChoosing && isLocalPlayerBatting && (
+        <div className="fixed inset-x-0 bottom-0 z-30 bg-[#0b1f11]/95 border-t-2 border-[#d4af37] p-3 text-[#fdfbf2] shadow-2xl">
+          <div className="max-w-3xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-3 h-3 rounded-full bg-amber-400 animate-ping" />
+              <div>
+                <div className="text-xs font-extrabold text-[#d4af37]">
+                  🏏 BATTER READY · {currentBattingName} (You are Batting on this Device)
+                </div>
+                <div className="text-[11px] text-stone-300">
+                  {currentBowlingName} is secretly selecting delivery on the other device ({bowlerChoiceTimer.toFixed(1)}s)...
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5 rounded-xl bg-black/40 border border-[#d4af37]/40 p-1">
+              <span className="text-[10px] text-stone-300 px-2 font-bold">PRE-AIM:</span>
+              <button
+                type="button"
+                onClick={() => {
+                  simRef.current.aimDir = -1;
+                  setAimDir(-1);
+                }}
+                className={`px-2.5 py-1.5 rounded text-xs font-bold ${
+                  aimDir === -1 ? 'bg-[#d4af37] text-[#0e2414]' : 'text-[#fdfbf2] hover:bg-white/10'
+                }`}
+              >
+                ← Off
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  simRef.current.aimDir = 0;
+                  setAimDir(0);
+                }}
+                className={`px-2.5 py-1.5 rounded text-xs font-bold ${
+                  aimDir === 0 ? 'bg-[#d4af37] text-[#0e2414]' : 'text-[#fdfbf2] hover:bg-white/10'
+                }`}
+              >
+                ↑ Straight
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  simRef.current.aimDir = 1;
+                  setAimDir(1);
+                }}
+                className={`px-2.5 py-1.5 rounded text-xs font-bold ${
+                  aimDir === 1 ? 'bg-[#d4af37] text-[#0e2414]' : 'text-[#fdfbf2] hover:bg-white/10'
+                }`}
+              >
+                Leg →
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* BATTING CONTROLS (DESKTOP & MOBILE TOUCH) */}
+      {screen === 'PLAYING' && !isBowlerChoosing && (
         <div className="pointer-events-none fixed inset-x-0 bottom-0 z-20 flex items-end justify-between px-4 pb-4 md:px-8">
           <div className="pointer-events-auto flex flex-col gap-1.5">
             <span className="text-[11px] font-semibold text-[#fdfbf2]/90 drop-shadow">
@@ -2942,13 +2862,11 @@ export default function GullyKeralaGame() {
                   simRef.current.aimDir = -1;
                   setAimDir(-1);
                 }}
-                className={`px-3.5 py-2.5 rounded-lg text-xs font-bold transition-colors whitespace-nowrap shrink-0 ${
-                  aimDir === -1
-                    ? 'bg-[#d4af37] text-[#0e2414]'
-                    : 'text-[#fdfbf2] hover:bg-white/10'
+                className={`px-3.5 py-2.5 rounded-lg text-xs font-bold transition-colors ${
+                  aimDir === -1 ? 'bg-[#d4af37] text-[#0e2414]' : 'text-[#fdfbf2] hover:bg-white/10'
                 }`}
               >
-                ← Off Side
+                ← Off
               </button>
               <button
                 type="button"
@@ -2956,10 +2874,8 @@ export default function GullyKeralaGame() {
                   simRef.current.aimDir = 0;
                   setAimDir(0);
                 }}
-                className={`px-3.5 py-2.5 rounded-lg text-xs font-bold transition-colors whitespace-nowrap shrink-0 ${
-                  aimDir === 0
-                    ? 'bg-[#d4af37] text-[#0e2414]'
-                    : 'text-[#fdfbf2] hover:bg-white/10'
+                className={`px-3.5 py-2.5 rounded-lg text-xs font-bold transition-colors ${
+                  aimDir === 0 ? 'bg-[#d4af37] text-[#0e2414]' : 'text-[#fdfbf2] hover:bg-white/10'
                 }`}
               >
                 ↑ Straight
@@ -2970,247 +2886,465 @@ export default function GullyKeralaGame() {
                   simRef.current.aimDir = 1;
                   setAimDir(1);
                 }}
-                className={`px-3.5 py-2.5 rounded-lg text-xs font-bold transition-colors whitespace-nowrap shrink-0 ${
-                  aimDir === 1
-                    ? 'bg-[#d4af37] text-[#0e2414]'
-                    : 'text-[#fdfbf2] hover:bg-white/10'
+                className={`px-3.5 py-2.5 rounded-lg text-xs font-bold transition-colors ${
+                  aimDir === 1 ? 'bg-[#d4af37] text-[#0e2414]' : 'text-[#fdfbf2] hover:bg-white/10'
                 }`}
               >
-                Leg Side →
+                Leg →
               </button>
             </div>
           </div>
 
-          <div className="hidden lg:flex items-center gap-2 rounded-xl bg-[#0b1f11]/80 border border-[#d4af37]/30 px-4 py-2 text-xs text-[#fdfbf2]">
-            <span className="text-[#d4af37] font-semibold">This Over:</span>
-            {hud.lastBalls.length === 0 ? (
-              <span className="text-white/60">First ball coming up...</span>
-            ) : (
-              hud.lastBalls.map((b, i) => (
-                <span key={i} className="font-mono font-bold px-1.5 text-white">
-                  {b}
-                </span>
-              ))
-            )}
-          </div>
-
           <div className="pointer-events-auto flex flex-col items-end gap-1.5">
             <span className="text-[11px] font-semibold text-[#fdfbf2]/90 drop-shadow">
-              SPACE / TAP TO BAT · അടിക്കുക
+              {isLocalPlayerBatting ? 'SPACE / TAP TO SWING BAT' : `WATCHING ${currentBattingName.toUpperCase()} BAT`}
             </span>
             <button
               type="button"
+              disabled={!isLocalPlayerBatting}
               onClick={handleSwing}
-              className="rounded-2xl bg-gradient-to-b from-[#facc15] to-[#ca8a04] border-2 border-[#fef08a] px-7 py-4 text-base font-extrabold text-[#0e2414] shadow-xl active:scale-95 transition-transform whitespace-nowrap shrink-0"
+              className={`rounded-2xl border-2 px-7 py-4 text-base font-extrabold shadow-xl transition-transform ${
+                isLocalPlayerBatting
+                  ? 'bg-gradient-to-b from-[#facc15] to-[#ca8a04] border-[#fef08a] text-[#0e2414] active:scale-95 cursor-pointer'
+                  : 'bg-stone-700 border-stone-600 text-stone-400 cursor-not-allowed opacity-60'
+              }`}
             >
-              🏏 SWING BAT (അടി!)
+              {isLocalPlayerBatting ? '🏏 SWING BAT (അടി!)' : '🎯 BOWLING DEVICE (LIVE)'}
             </button>
           </div>
         </div>
       )}
 
-      {/* ===================================================================
-          TITLE SCREEN MODAL
-          =================================================================== */}
+      {/* TITLE SCREEN MODAL */}
       {screen === 'TITLE' && (
         <div className="fixed inset-0 z-30 flex items-center justify-center p-4 bg-black/45">
           <div className="relative w-full max-w-3xl max-h-[92vh] overflow-y-auto rounded-2xl bg-[#fdfbf2] text-[#14361b] shadow-2xl border-4 border-[#d4af37]">
             <div className="h-3.5 w-full bg-[repeating-linear-gradient(90deg,#d4af37_0px,#d4af37_18px,#b45309_18px,#b45309_24px,#fdfbf2_24px,#fdfbf2_30px)]" />
 
-            <div className="p-6 md:p-8 space-y-6">
-              <div className="text-center space-y-1.5">
+            <div className="p-6 md:p-8 space-y-5">
+              <div className="text-center space-y-1">
                 <div className="inline-flex items-center gap-2 text-xs font-bold tracking-wider text-[#b45309]">
-                  <span>RURAL KERALA PADAM CRICKET</span>
-                  <span>·</span>
-                  <span>വെണ്ണിക്കുളം പ്രീമിയർ ലീഗ്</span>
+                  <span>RURAL KERALA PADAM CRICKET · വെണ്ണിക്കുളം പ്രീമിയർ ലീഗ്</span>
                 </div>
-                <h1
-                  className="text-3xl md:text-5xl font-extrabold tracking-tight text-[#0e2414]"
-                  style={{ textWrap: 'balance' }}
-                >
+                <h1 className="text-3xl md:text-5xl font-extrabold tracking-tight text-[#0e2414]">
                   Vennikulam Premier League
                 </h1>
-                <p className="text-sm text-[#335c3b] max-w-xl mx-auto">
-                  Step onto the harvested village paddy field! Smash sixes over the mud varambu into the tall paddy, clang the chayakada tin roof for +2 bonus runs, and stay clear of the winding canal!
+                <p className="text-xs text-[#335c3b] max-w-lg mx-auto">
+                  Play Solo or challenge a friend across Two Devices with a 4-letter Room Code!
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="md:col-span-2 space-y-2">
-                  <label className="block text-xs font-bold text-[#14361b]">
-                    SELECT MODE · കളി രീതി
-                  </label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {[
-                      { id: 'QUICK', label: 'Quick Match', sub: 'സൗഹൃദ മത്സരം' },
-                      { id: 'CHASE', label: 'Chase Target', sub: 'ലക്ഷ്യം നേടുക' },
-                      { id: 'TOURNAMENT', label: 'Tournament', sub: 'ടൂർണമെന്റ് (3x)' },
-                    ].map((m) => (
-                      <button
-                        key={m.id}
-                        type="button"
-                        onClick={() => setMode(m.id as GameMode)}
-                        className={`rounded-xl p-3 text-left border transition-colors ${
-                          mode === m.id
-                            ? 'bg-[#14361b] text-[#fdfbf2] border-[#d4af37]'
-                            : 'bg-[#f4EFE0] text-[#14361b] border-[#d4af37]/40 hover:bg-[#ebe3ce]'
-                        }`}
-                      >
-                        <div className="text-sm font-bold whitespace-nowrap">{m.label}</div>
-                        <div className="text-[11px] opacity-80">{m.sub}</div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="block text-xs font-bold text-[#14361b]">
-                    OVERS · ഓവറുകൾ
-                  </label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {GAME_CONFIG.OVER_OPTIONS.map((ov) => (
-                      <button
-                        key={ov}
-                        type="button"
-                        onClick={() => setOvers(ov)}
-                        className={`rounded-xl py-3 text-center font-mono font-bold border transition-colors ${
-                          overs === ov
-                            ? 'bg-[#14361b] text-[#d4af37] border-[#d4af37]'
-                            : 'bg-[#f4EFE0] text-[#14361b] border-[#d4af37]/40 hover:bg-[#ebe3ce]'
-                        }`}
-                      >
-                        <div className="text-base">{ov}</div>
-                        <div className="text-[10px] font-sans font-normal opacity-80">
-                          {ov * 6} balls
-                        </div>
-                      </button>
-                    ))}
-                  </div>
+              {/* Mode Selector */}
+              <div>
+                <label className="block text-xs font-bold text-[#14361b] mb-1.5">
+                  SELECT GAME MODE · കളി രീതി
+                </label>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  {[
+                    { id: 'QUICK', label: 'Quick Match', sub: 'സൗഹൃദ മത്സരം' },
+                    { id: 'CHASE', label: 'Chase Mode', sub: 'ലക്ഷ്യം നേടുക' },
+                    { id: 'TOURNAMENT', label: 'Tournament', sub: 'ടൂർണമെന്റ് (3x)' },
+                    { id: 'MULTIPLAYER', label: 'Multiplayer (2 Devices)', sub: 'രണ്ട് ഫോൺ / ഉപകരണങ്ങൾ' },
+                  ].map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => {
+                        setMode(m.id as GameMode);
+                        if (m.id === 'MULTIPLAYER' && !activeRoomCode && !isConnecting && mpRole === 'HOST') {
+                          handleHostOnline();
+                        }
+                      }}
+                      className={`rounded-xl p-2.5 text-left border transition-all ${
+                        mode === m.id
+                          ? 'bg-[#14361b] text-[#fdfbf2] border-[#d4af37] ring-2 ring-amber-400/40'
+                          : 'bg-[#f4EFE0] text-[#14361b] border-[#d4af37]/40 hover:bg-[#ebe3ce]'
+                      }`}
+                    >
+                      <div className="text-sm font-bold">{m.label}</div>
+                      <div className="text-[10px] opacity-80">{m.sub}</div>
+                    </button>
+                  ))}
                 </div>
               </div>
 
-              {mode !== 'QUICK' && (
-                <div className="space-y-2">
-                  <label className="block text-xs font-bold text-[#14361b]">
-                    {mode === 'TOURNAMENT'
-                      ? `TOURNAMENT ROUND ${sessionStats.tournamentStage + 1}/3 · എതിരാളി`
-                      : 'SELECT RIVAL VILLAGE · എതിർ ടീം'}
-                  </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                    {GAME_CONFIG.RIVALS.map((riv, idx) => {
-                      const isSelected =
-                        mode === 'TOURNAMENT'
-                          ? sessionStats.tournamentStage === idx
-                          : selectedRivalIdx === idx;
-                      return (
-                        <button
-                          key={riv.id}
-                          type="button"
-                          disabled={mode === 'TOURNAMENT'}
-                          onClick={() => setSelectedRivalIdx(idx)}
-                          className={`rounded-xl p-3 text-left border transition-colors ${
-                            isSelected
-                              ? 'bg-[#14361b] text-[#fdfbf2] border-[#d4af37]'
-                              : 'bg-[#f4EFE0] text-[#14361b] border-[#d4af37]/40 hover:bg-[#ebe3ce]'
-                          }`}
-                        >
-                          <div className="text-sm font-bold">{riv.name}</div>
-                          <div className="text-[11px] text-[#d4af37]">{riv.malayalam}</div>
-                          <div className="text-[11px] opacity-80 mt-1">
-                            Target: ~{overs * riv.runsPerOver} runs · {riv.favoredBall}
+              {/* MULTIPLAYER TWO-DEVICE LOBBY SUB-PANEL */}
+              {mode === 'MULTIPLAYER' ? (
+                <div className="p-4 bg-[#f4EFE0] rounded-xl border-2 border-[#d4af37] space-y-4">
+                  {/* Two-Device Role Tabs: Host on Device 1 vs Join on Device 2 */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#d4af37]/40 pb-3">
+                    <div>
+                      <div className="text-xs font-extrabold text-[#0e2414] flex items-center gap-1.5">
+                        <Users className="w-4 h-4 text-[#b45309]" />
+                        <span>TWO-DEVICE 1v1 MULTIPLAYER · രണ്ട് ഉപകരണങ്ങളിൽ കളിക്കാം</span>
+                      </div>
+                      <p className="text-[11px] text-stone-600">
+                        Device 1 creates a 4-letter Room Code; Device 2 enters the code or opens the invite link.
+                      </p>
+                    </div>
+                    <div className="flex gap-1.5 bg-white/80 p-1 rounded-lg border border-[#d4af37]/50 text-xs font-bold">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMpRole('HOST');
+                          setConnError(null);
+                          if (!activeRoomCode && !isConnecting) {
+                            handleHostOnline();
+                          }
+                        }}
+                        className={`px-3 py-1.5 rounded-md transition-colors ${
+                          mpRole === 'HOST' ? 'bg-[#14361b] text-[#fdfbf2]' : 'text-stone-700 hover:bg-stone-100'
+                        }`}
+                      >
+                        📱 Device 1: Host Room
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMpRole('GUEST');
+                          setConnError(null);
+                        }}
+                        className={`px-3 py-1.5 rounded-md transition-colors ${
+                          mpRole === 'GUEST' ? 'bg-[#14361b] text-[#fdfbf2]' : 'text-stone-700 hover:bg-stone-100'
+                        }`}
+                      >
+                        📲 Device 2: Join Room
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Connection & Room Code Box */}
+                  {mpRole === 'HOST' ? (
+                    <div className="p-3.5 bg-amber-50 rounded-xl border border-amber-300 flex flex-col sm:flex-row items-center justify-between gap-3">
+                      <div className="space-y-1 text-center sm:text-left">
+                        <div className="text-[11px] font-bold uppercase tracking-wider text-[#b45309]">
+                          DEVICE 1 (HOST) · SHARE THIS 4-LETTER ROOM CODE WITH DEVICE 2
+                        </div>
+                        {activeRoomCode ? (
+                          <div className="flex items-center justify-center sm:justify-start gap-3">
+                            <span className="font-mono text-2xl font-black tracking-widest text-[#0e2414] bg-amber-200 border border-amber-400 px-3.5 py-1 rounded-lg">
+                              {activeRoomCode}
+                            </span>
+                            <div className="text-xs">
+                              {isConnected ? (
+                                <span className="inline-flex items-center gap-1 font-extrabold text-emerald-700 bg-emerald-100 px-2.5 py-1 rounded-md border border-emerald-300">
+                                  ● Device 2 ({p2Name}) Connected!
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 font-semibold text-amber-800 animate-pulse">
+                                  ⏳ Waiting for Device 2 to join...
+                                </span>
+                              )}
+                            </div>
                           </div>
+                        ) : (
+                          <div className="text-xs text-amber-800 font-semibold">
+                            {isConnecting ? 'Generating 4-letter Room Code...' : 'Click below to generate a 4-letter Room Code'}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2 w-full sm:w-auto">
+                        {activeRoomCode ? (
+                          <button
+                            type="button"
+                            onClick={copyInviteLink}
+                            className="flex-1 sm:flex-initial px-4 py-2 bg-[#b45309] hover:bg-amber-800 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 shadow"
+                          >
+                            {copiedLink ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                            {copiedLink ? 'Invite Link Copied!' : 'Copy Invite Link (?room=' + activeRoomCode + ')'}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={handleHostOnline}
+                            disabled={isConnecting}
+                            className="flex-1 sm:flex-initial px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg font-bold text-xs shadow"
+                          >
+                            Generate Room Code
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3.5 bg-blue-50 rounded-xl border border-blue-300 space-y-2">
+                      <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+                        <div className="text-center sm:text-left">
+                          <div className="text-[11px] font-bold uppercase tracking-wider text-blue-900">
+                            DEVICE 2 (GUEST) · ENTER 4-LETTER CODE FROM DEVICE 1
+                          </div>
+                          <p className="text-xs text-blue-800">
+                            Ask Player 1 for the 4-letter code shown on Device 1 and tap Join.
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 w-full sm:w-auto">
+                          <input
+                            type="text"
+                            maxLength={4}
+                            value={roomCodeInput}
+                            onChange={(e) => setRoomCodeInput(e.target.value.toUpperCase())}
+                            placeholder="CODE"
+                            className="w-28 px-3 py-2 border-2 border-blue-400 bg-white rounded-lg text-base font-mono font-black uppercase text-center tracking-widest"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleJoinOnline()}
+                            disabled={isConnecting}
+                            className="flex-1 sm:flex-initial px-5 py-2.5 bg-blue-700 hover:bg-blue-800 text-white rounded-lg font-extrabold text-xs disabled:opacity-50 shadow"
+                          >
+                            {isConnecting ? 'Joining...' : isConnected ? 'Connected ✓' : 'Join Device 1'}
+                          </button>
+                        </div>
+                      </div>
+                      {isConnected && (
+                        <div className="text-xs font-extrabold text-emerald-700 bg-emerald-100 border border-emerald-300 px-3 py-1.5 rounded-lg">
+                          ● Connected to Device 1 ({p1Name}) in Room {activeRoomCode}! Host can now start the Coin Toss.
+                        </div>
+                      )}
+                      {connError && <p className="text-xs text-rose-600 font-bold">{connError}</p>}
+                    </div>
+                  )}
+
+                  {/* Player 1 (Device 1) & Player 2 (Device 2) Batsman Cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                    <div
+                      className={`p-3 rounded-xl border ${
+                        mpRole === 'HOST' ? 'bg-white border-[#14361b] ring-2 ring-[#14361b]/15' : 'bg-white/60 border-stone-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="font-extrabold text-[#14361b]">
+                          📱 Device 1 (Host): {mpRole === 'HOST' ? 'YOU' : p1Name}
+                        </label>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-900">P1</span>
+                      </div>
+                      <input
+                        type="text"
+                        value={p1Name}
+                        disabled={mpRole !== 'HOST'}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setP1Name(val);
+                          if (mpRole === 'HOST' && isConnected) {
+                            netManagerRef.current?.send({
+                              type: 'LOBBY_STATE',
+                              payload: {
+                                p1Name: val,
+                                p1Batsman,
+                                p2Name,
+                                p2Batsman,
+                                overs,
+                                timeOfDay,
+                                isMonsoon,
+                              },
+                            });
+                          }
+                        }}
+                        className="w-full px-2.5 py-1.5 border rounded-lg text-xs mb-2 disabled:bg-stone-100 font-semibold"
+                        placeholder="Player 1 Name"
+                      />
+                      <select
+                        value={p1Batsman}
+                        disabled={mpRole !== 'HOST'}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setP1Batsman(val);
+                          if (mpRole === 'HOST' && isConnected) {
+                            netManagerRef.current?.send({
+                              type: 'LOBBY_STATE',
+                              payload: {
+                                p1Name,
+                                p1Batsman: val,
+                                p2Name,
+                                p2Batsman,
+                                overs,
+                                timeOfDay,
+                                isMonsoon,
+                              },
+                            });
+                          }
+                        }}
+                        className="w-full px-2.5 py-1.5 border rounded-lg text-xs disabled:bg-stone-100 font-semibold"
+                      >
+                        {GAME_CONFIG.BATSMEN.map((b) => (
+                          <option key={b.id} value={b.id}>
+                            {b.name} ({b.role})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div
+                      className={`p-3 rounded-xl border ${
+                        mpRole === 'GUEST' ? 'bg-white border-blue-800 ring-2 ring-blue-800/15' : 'bg-white/60 border-stone-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="font-extrabold text-blue-950">
+                          📲 Device 2 (Guest): {mpRole === 'GUEST' ? 'YOU' : p2Name}
+                        </label>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-900">P2</span>
+                      </div>
+                      <input
+                        type="text"
+                        value={p2Name}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setP2Name(val);
+                          if (mpRole === 'GUEST' && isConnected) {
+                            netManagerRef.current?.send({
+                              type: 'GUEST_PROFILE',
+                              payload: {
+                                p2Name: val,
+                                p2Batsman,
+                              },
+                            });
+                          } else if (mpRole === 'HOST' && isConnected) {
+                            netManagerRef.current?.send({
+                              type: 'LOBBY_STATE',
+                              payload: {
+                                p1Name,
+                                p1Batsman,
+                                p2Name: val,
+                                p2Batsman,
+                                overs,
+                                timeOfDay,
+                                isMonsoon,
+                              },
+                            });
+                          }
+                        }}
+                        className="w-full px-2.5 py-1.5 border rounded-lg text-xs mb-2 font-semibold"
+                        placeholder="Player 2 Name"
+                      />
+                      <select
+                        value={p2Batsman}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setP2Batsman(val);
+                          if (mpRole === 'GUEST' && isConnected) {
+                            netManagerRef.current?.send({
+                              type: 'GUEST_PROFILE',
+                              payload: {
+                                p2Name,
+                                p2Batsman: val,
+                              },
+                            });
+                          } else if (mpRole === 'HOST' && isConnected) {
+                            netManagerRef.current?.send({
+                              type: 'LOBBY_STATE',
+                              payload: {
+                                p1Name,
+                                p1Batsman,
+                                p2Name,
+                                p2Batsman: val,
+                                overs,
+                                timeOfDay,
+                                isMonsoon,
+                              },
+                            });
+                          }
+                        }}
+                        className="w-full px-2.5 py-1.5 border rounded-lg text-xs font-semibold"
+                      >
+                        {GAME_CONFIG.BATSMEN.map((b) => (
+                          <option key={b.id} value={b.id}>
+                            {b.name} ({b.role})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Overs selection */}
+                  <div className="flex items-center justify-between text-xs pt-1">
+                    <span className="font-bold">Match Length (Two Innings):</span>
+                    <div className="flex gap-2">
+                      {GAME_CONFIG.OVER_OPTIONS.map((ov) => (
+                        <button
+                          key={ov}
+                          type="button"
+                          disabled={mpRole === 'GUEST'}
+                          onClick={() => {
+                            setOvers(ov);
+                            if (mpRole === 'HOST' && isConnected) {
+                              netManagerRef.current?.send({
+                                type: 'LOBBY_STATE',
+                                payload: {
+                                  p1Name,
+                                  p1Batsman,
+                                  p2Name,
+                                  p2Batsman,
+                                  overs: ov,
+                                  timeOfDay,
+                                  isMonsoon,
+                                },
+                              });
+                            }
+                          }}
+                          className={`px-3 py-1 rounded font-bold border ${
+                            overs === ov ? 'bg-[#14361b] text-white border-amber-400' : 'bg-white border-stone-300'
+                          } disabled:opacity-60`}
+                        >
+                          {ov} Over{ov > 1 ? 's' : ''}
                         </button>
-                      );
-                    })}
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                /* Single player config */
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between text-xs">
+                    <label className="font-bold text-[#14361b]">SELECT BATSMAN:</label>
+                    <button
+                      onClick={() => setUnlockAllBatsmen((v) => !v)}
+                      className="text-[#b45309] font-bold hover:underline"
+                    >
+                      {unlockAllBatsmen ? 'Lock Restored' : 'Unlock All Batsmen'}
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {GAME_CONFIG.BATSMEN.map((b) => (
+                      <button
+                        key={b.id}
+                        onClick={() => setSelectedBatsmanId(b.id)}
+                        className={`p-2.5 text-left rounded-xl border text-xs ${
+                          selectedBatsmanId === b.id
+                            ? 'bg-[#14361b] text-white border-amber-400'
+                            : 'bg-[#f4EFE0] text-black border-[#d4af37]/40'
+                        }`}
+                      >
+                        <div className="font-bold">{b.name}</div>
+                        <div className="text-[10px] opacity-80">{b.role}</div>
+                      </button>
+                    ))}
                   </div>
                 </div>
               )}
 
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-[#14361b]">
-                    SELECT BATSMAN · ബാറ്റ്സ്മാൻ
-                  </label>
+              {/* Start Button */}
+              <div className="pt-2 text-center">
+                {mode === 'MULTIPLAYER' && mpRole === 'GUEST' && !isConnected ? (
+                  <div className="text-xs font-bold text-blue-900 bg-blue-100 border border-blue-300 rounded-xl py-3 px-4">
+                    Enter the 4-letter Room Code above and tap &ldquo;Join Device 1&rdquo; to connect!
+                  </div>
+                ) : (
                   <button
                     type="button"
-                    onClick={() => setUnlockAllBatsmen((v) => !v)}
-                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#b45309] hover:underline"
+                    onClick={() => startMatch()}
+                    className="w-full sm:w-auto min-w-[260px] inline-flex items-center justify-center gap-2 rounded-xl bg-[#14361b] hover:bg-[#1b4924] text-[#fdfbf2] border-2 border-[#d4af37] px-8 py-3.5 text-base font-extrabold shadow-lg transition-colors"
                   >
-                    <Sparkles className="w-3.5 h-3.5" />
-                    {unlockAllBatsmen ? 'Milestone Locks Restored' : 'Unlock All Batsmen (Quick Toggle)'}
+                    <Play className="w-5 h-5 text-[#d4af37] fill-current" />
+                    <span>
+                      {mode === 'MULTIPLAYER'
+                        ? isConnected
+                          ? 'Toss Coin & Start 2-Device Match'
+                          : 'Open Coin Toss (Waiting for Device 2)'
+                        : 'Start Match · കളി തുടങ്ങാം'}
+                    </span>
                   </button>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                  {GAME_CONFIG.BATSMEN.map((b) => {
-                    const isUnlocked =
-                      unlockAllBatsmen || sessionStats.unlockedIds.includes(b.id);
-                    const isSelected = selectedBatsmanId === b.id;
-                    return (
-                      <button
-                        key={b.id}
-                        type="button"
-                        disabled={!isUnlocked}
-                        onClick={() => setSelectedBatsmanId(b.id)}
-                        className={`rounded-xl p-3 text-left border transition-colors ${
-                          isSelected
-                            ? 'bg-[#14361b] text-[#fdfbf2] border-[#d4af37]'
-                            : isUnlocked
-                            ? 'bg-[#f4EFE0] text-[#14361b] border-[#d4af37]/40 hover:bg-[#ebe3ce]'
-                            : 'bg-stone-200/70 text-stone-500 border-stone-300 cursor-not-allowed'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-bold">
-                            {b.name} ({b.malayalam})
-                          </span>
-                          <span className="text-[11px] font-semibold text-[#d4af37]">
-                            {b.role}
-                          </span>
-                        </div>
-                        <p className="text-xs mt-1 opacity-90">{b.desc}</p>
-                        {!isUnlocked && (
-                          <p className="text-[11px] font-semibold text-amber-800 mt-1">
-                            🔒 {b.unlockText}
-                          </p>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="rounded-xl bg-[#f4EFE0] border border-[#d4af37]/50 p-3.5 text-xs text-[#14361b] grid grid-cols-2 sm:grid-cols-4 gap-2">
-                <div>
-                  <strong className="block text-[#b45309]">🌊 Winding Canal</strong>
-                  <span>Ball in water = OUT!</span>
-                </div>
-                <div>
-                  <strong className="block text-[#b45309]">☕ Tin Roof</strong>
-                  <span>Chayakada hit = +2 Bonus</span>
-                </div>
-                <div>
-                  <strong className="block text-[#b45309]">🌾 Tall Paddy</strong>
-                  <span>Over varambu = Auto 6!</span>
-                </div>
-                <div>
-                  <strong className="block text-[#b45309]">🐐 Goat / Hen</strong>
-                  <span>Animal block = 0 Run</span>
-                </div>
-              </div>
-
-              <div className="pt-1 flex flex-col items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => startMatch()}
-                  className="w-full sm:w-auto min-w-[260px] inline-flex items-center justify-center gap-2 rounded-xl bg-[#14361b] hover:bg-[#1b4924] text-[#fdfbf2] border-2 border-[#d4af37] px-8 py-3.5 text-base font-extrabold shadow-lg transition-colors whitespace-nowrap shrink-0"
-                >
-                  <Play className="w-5 h-5 text-[#d4af37] fill-current" />
-                  <span>Start Match · കളി തുടങ്ങാം</span>
-                </button>
-                <div className="text-xs text-[#335c3b] text-center">
-                  ←/↑/→ Aim Direction · Space or Click Swing Bat · M Mute · Esc Pause
-                </div>
+                )}
               </div>
             </div>
 
@@ -3219,131 +3353,224 @@ export default function GullyKeralaGame() {
         </div>
       )}
 
-      {/* ===================================================================
-          PAUSE MODAL
-          =================================================================== */}
-      {screen === 'PAUSED' && (
-        <div className="fixed inset-0 z-30 flex items-center justify-center p-4 bg-black/55">
-          <div className="w-full max-w-md rounded-2xl bg-[#fdfbf2] text-[#14361b] border-4 border-[#d4af37] p-6 text-center space-y-4 shadow-2xl">
-            <h2 className="text-2xl font-extrabold">Match Paused · ഇടവേള</h2>
-            <p className="text-sm text-[#335c3b]">
-              Grab a hot meter chaya and pazhampori from the chayakada!
-            </p>
-            <div className="flex flex-col sm:flex-row justify-center gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => {
-                  simRef.current.screen = 'PLAYING';
-                  setScreen('PLAYING');
-                }}
-                className="px-5 py-2.5 rounded-xl bg-[#14361b] text-[#fdfbf2] font-bold text-sm whitespace-nowrap shrink-0"
+      {/* COIN TOSS MODAL */}
+      {screen === 'TOSS' && (
+        <div className="fixed inset-0 z-40 bg-black/75 flex items-center justify-center p-4">
+          <div className="w-full max-w-md rounded-2xl bg-[#fdfbf2] text-[#14361b] border-4 border-[#d4af37] p-6 text-center shadow-2xl space-y-4">
+            <h2 className="text-2xl font-black text-[#0e2414]">COIN TOSS · ടോസ്</h2>
+
+            {/* Coin Animation */}
+            <div className="py-6 flex justify-center">
+              <div
+                className={`w-28 h-28 rounded-full border-4 border-amber-500 bg-gradient-to-tr from-amber-400 via-yellow-200 to-amber-500 flex items-center justify-center shadow-2xl text-amber-950 font-black text-xl ${
+                  tossFlipping ? 'animate-spin' : ''
+                }`}
               >
-                Resume Match
-              </button>
-              <button
-                type="button"
-                onClick={() => startMatch()}
-                className="px-5 py-2.5 rounded-xl bg-[#f4EFE0] border border-[#d4af37] text-[#14361b] font-bold text-sm whitespace-nowrap shrink-0"
-              >
-                Restart Match
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  simRef.current.screen = 'TITLE';
-                  setScreen('TITLE');
-                }}
-                className="px-5 py-2.5 rounded-xl bg-stone-200 text-stone-800 font-bold text-sm whitespace-nowrap shrink-0"
-              >
-                Main Menu
-              </button>
+                {tossFlipping ? 'FLIPPING...' : tossWinner ? 'WINNER!' : tossCallChoice}
+              </div>
             </div>
+
+            {!tossWinner ? (
+              <div className="space-y-3">
+                <p className="text-xs text-[#335c3b] font-bold">
+                  {tossCaller === 'P1' ? p1Name : p2Name} calls the toss:
+                </p>
+                <div className="flex justify-center gap-3">
+                  <button
+                    disabled={tossFlipping}
+                    onClick={() => setTossCallChoice('HEADS')}
+                    className={`px-4 py-2 rounded-lg font-bold text-xs border ${
+                      tossCallChoice === 'HEADS' ? 'bg-[#14361b] text-white border-amber-400' : 'bg-white'
+                    }`}
+                  >
+                    HEADS (പൂവ്)
+                  </button>
+                  <button
+                    disabled={tossFlipping}
+                    onClick={() => setTossCallChoice('TAILS')}
+                    className={`px-4 py-2 rounded-lg font-bold text-xs border ${
+                      tossCallChoice === 'TAILS' ? 'bg-[#14361b] text-white border-amber-400' : 'bg-white'
+                    }`}
+                  >
+                    TAILS (കായ്)
+                  </button>
+                </div>
+                <button
+                  disabled={tossFlipping}
+                  onClick={flipCoin}
+                  className="w-full py-2.5 bg-[#b45309] text-white font-black rounded-xl text-sm"
+                >
+                  Spin Sovereign Coin!
+                </button>
+              </div>
+            ) : !tossDecision ? (
+              <div className="space-y-3">
+                <p className="text-sm font-black text-emerald-800">
+                  🎉 {tossWinner === 'P1' ? p1Name : p2Name} Won the Toss!
+                </p>
+                {((tossWinner === 'P1' && mpRole === 'HOST') || (tossWinner === 'P2' && mpRole === 'GUEST') || !isConnected) ? (
+                  <>
+                    <p className="text-xs text-stone-600">Choose to Bat or Bowl first on your device:</p>
+                    <div className="flex justify-center gap-3">
+                      <button
+                        onClick={() => makeTossDecision('BAT')}
+                        className="flex-1 py-3 bg-[#14361b] text-white font-black rounded-xl text-sm border-2 border-amber-400"
+                      >
+                        🏏 Bat First
+                      </button>
+                      <button
+                        onClick={() => makeTossDecision('BOWL')}
+                        className="flex-1 py-3 bg-amber-600 text-white font-black rounded-xl text-sm"
+                      >
+                        🎯 Bowl First
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-xs font-bold text-amber-800 animate-pulse py-2">
+                    Waiting for {tossWinner === 'P1' ? p1Name : p2Name} to choose Bat or Bowl on their device...
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="text-sm font-bold text-[#14361b]">
+                {tossWinner === 'P1' ? p1Name : p2Name} elected to {tossDecision} first! Loading match...
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* ===================================================================
-          END-OF-MATCH SUMMARY CARD
-          =================================================================== */}
+      {/* INNINGS BREAK MODAL */}
+      {screen === 'INNINGS_BREAK' && innings1Score && (
+        <div className="fixed inset-0 z-40 bg-black/75 flex items-center justify-center p-4">
+          <div className="w-full max-w-md rounded-2xl bg-[#fdfbf2] text-[#14361b] border-4 border-[#d4af37] p-6 text-center shadow-2xl space-y-4">
+            <h2 className="text-2xl font-black text-[#0e2414]">INNINGS BREAK · ഇടവേള</h2>
+            <div className="p-3 bg-[#f4EFE0] rounded-xl border border-stone-300 text-xs space-y-1">
+              <div className="text-stone-600 font-bold">{innings1Score.battingPlayer} scored:</div>
+              <div className="font-mono text-3xl font-black text-[#0e2414]">
+                {innings1Score.runs}/{innings1Score.wickets}
+              </div>
+              <div className="text-stone-500">
+                ({Math.floor(innings1Score.balls / 6)}.{innings1Score.balls % 6} overs · {innings1Score.fours}×4 · {innings1Score.sixes}×6)
+              </div>
+            </div>
+
+            <div className="p-3 bg-amber-100 rounded-xl border border-amber-400">
+              <div className="text-xs text-amber-900 font-semibold">Target for {innings1Score.bowlingPlayer}:</div>
+              <div className="font-mono text-2xl font-extrabold text-[#b45309]">
+                {innings1Score.runs + 1} Runs to Win
+              </div>
+            </div>
+
+            <button
+              onClick={() => {
+                if (isConnected) {
+                  netManagerRef.current?.send({ type: 'START_INNINGS_2' });
+                }
+                startInnings(2);
+              }}
+              className="w-full py-3 bg-[#14361b] text-white font-black rounded-xl text-sm border-2 border-amber-400"
+            >
+              Start 2nd Innings Chase! (Both Devices)
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* SUMMARY MODAL */}
       {screen === 'SUMMARY' && (
-        <div className="fixed inset-0 z-30 flex items-center justify-center p-4 bg-black/55">
+        <div className="fixed inset-0 z-40 bg-black/75 flex items-center justify-center p-4">
           <div className="w-full max-w-lg rounded-2xl bg-[#fdfbf2] text-[#14361b] border-4 border-[#d4af37] overflow-hidden shadow-2xl">
             <div className="h-3.5 w-full bg-[repeating-linear-gradient(90deg,#d4af37_0px,#d4af37_18px,#b45309_18px,#b45309_24px,#fdfbf2_24px,#fdfbf2_30px)]" />
 
-            <div className="p-6 md:p-8 space-y-5 text-center">
-              <div className="inline-flex items-center gap-2 text-xs font-bold text-[#b45309]">
+            <div className="p-6 md:p-8 space-y-4 text-center">
+              <div className="inline-flex items-center gap-1.5 text-xs font-bold text-[#b45309]">
                 <Award className="w-4 h-4" />
-                <span>MATCH SUMMARY · മത്സര ഫലം</span>
+                <span>MATCH COMPLETED · മത്സര ഫലം</span>
               </div>
 
               <h2 className="text-2xl md:text-3xl font-extrabold text-[#0e2414]">
                 {hud.matchResultTitle}
               </h2>
 
-              <div className="py-2 px-4 rounded-xl bg-[#14361b] text-[#fdfbf2]">
-                <div className="text-xs text-[#d4af37]">Earned Village Title · പദവി</div>
-                <div className="text-lg font-extrabold">{hud.villageTitle}</div>
-              </div>
+              {/* Series Score Badge for Multiplayer */}
+              {mode === 'MULTIPLAYER' && (
+                <div className="inline-block px-3 py-1 bg-amber-100 border border-amber-400 rounded-full text-xs font-bold text-amber-950 font-mono">
+                  Series: {p1Name} ({seriesScore.p1Wins}) - ({seriesScore.p2Wins}) {p2Name}
+                </div>
+              )}
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-left">
-                <div className="rounded-xl bg-[#f4EFE0] p-3 border border-[#d4af37]/40">
-                  <div className="text-[11px] text-[#335c3b]">Total Runs</div>
-                  <div className="font-mono text-xl font-extrabold tabular-nums">
-                    {hud.runs}/{hud.wickets}
-                  </div>
+              {/* Village Titles for Winner & Loser */}
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="p-2.5 bg-emerald-100 border border-emerald-300 rounded-xl">
+                  <div className="text-emerald-800 font-bold">{hud.winnerName || 'Winner'}:</div>
+                  <div className="font-extrabold text-sm text-emerald-950">{hud.villageTitle}</div>
                 </div>
-                <div className="rounded-xl bg-[#f4EFE0] p-3 border border-[#d4af37]/40">
-                  <div className="text-[11px] text-[#335c3b]">Boundaries</div>
-                  <div className="font-mono text-xl font-extrabold tabular-nums">
-                    {hud.fours}×4 · {hud.sixes}×6
-                  </div>
-                </div>
-                <div className="rounded-xl bg-[#f4EFE0] p-3 border border-[#d4af37]/40">
-                  <div className="text-[11px] text-[#335c3b]">Strike Rate</div>
-                  <div className="font-mono text-xl font-extrabold tabular-nums">
-                    {strikeRate}
-                  </div>
-                </div>
-                <div className="rounded-xl bg-[#f4EFE0] p-3 border border-[#d4af37]/40">
-                  <div className="text-[11px] text-[#335c3b]">High Score</div>
-                  <div className="font-mono text-xl font-extrabold tabular-nums text-[#b45309]">
-                    {sessionStats.highScore}
-                  </div>
+                <div className="p-2.5 bg-rose-100 border border-rose-300 rounded-xl">
+                  <div className="text-rose-800 font-bold">{hud.loserName || 'Runner-Up'}:</div>
+                  <div className="font-extrabold text-sm text-rose-950">{hud.loserTitle || 'Kayalil Poyi Award'}</div>
                 </div>
               </div>
 
-              <div className="text-xs text-[#335c3b] flex items-center justify-between px-1">
-                <span>
-                  <strong>Best Shot:</strong> {hud.bestShot}
-                </span>
-                <span>
-                  <strong>Opponent:</strong> {currentRival.name}
-                </span>
-              </div>
+              {/* Detailed Dual Innings Scorecards */}
+              {mode === 'MULTIPLAYER' && innings1Score && innings2Score ? (
+                <div className="space-y-2 text-left text-xs bg-[#f4EFE0] p-3 rounded-xl border border-stone-300">
+                  <div className="border-b pb-1 font-bold flex justify-between">
+                    <span>1st Innings: {innings1Score.battingPlayer}</span>
+                    <span className="font-mono font-black">{innings1Score.runs}/{innings1Score.wickets} ({Math.floor(innings1Score.balls/6)}.{innings1Score.balls%6} ov)</span>
+                  </div>
+                  <div className="pt-1 font-bold flex justify-between">
+                    <span>2nd Innings: {innings2Score.battingPlayer}</span>
+                    <span className="font-mono font-black">{innings2Score.runs}/{innings2Score.wickets} ({Math.floor(innings2Score.balls/6)}.{innings2Score.balls%6} ov)</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-left">
+                  <div className="rounded-xl bg-[#f4EFE0] p-2.5 border">
+                    <div className="text-[10px] text-stone-600">Total Runs</div>
+                    <div className="font-mono text-lg font-black">{hud.runs}/{hud.wickets}</div>
+                  </div>
+                  <div className="rounded-xl bg-[#f4EFE0] p-2.5 border">
+                    <div className="text-[10px] text-stone-600">Boundaries</div>
+                    <div className="font-mono text-lg font-black">{hud.fours}×4 · {hud.sixes}×6</div>
+                  </div>
+                  <div className="rounded-xl bg-[#f4EFE0] p-2.5 border">
+                    <div className="text-[10px] text-stone-600">Strike Rate</div>
+                    <div className="font-mono text-lg font-black">{strikeRate}</div>
+                  </div>
+                  <div className="rounded-xl bg-[#f4EFE0] p-2.5 border">
+                    <div className="text-[10px] text-stone-600">High Score</div>
+                    <div className="font-mono text-lg font-black text-[#b45309]">{sessionStats.highScore}</div>
+                  </div>
+                </div>
+              )}
 
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+              {/* Action Buttons */}
+              <div className="flex flex-col sm:flex-row gap-2.5 pt-2">
+                {mode === 'MULTIPLAYER' ? (
+                  <button
+                    onClick={startRematch}
+                    className="flex-1 py-3 bg-[#14361b] text-white font-extrabold rounded-xl text-xs border border-amber-400"
+                  >
+                    🔁 Play Rematch (Next Match in Series)
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => startMatch()}
+                    className="flex-1 py-3 bg-[#14361b] text-white font-extrabold rounded-xl text-xs border border-amber-400"
+                  >
+                    Play Again
+                  </button>
+                )}
                 <button
-                  type="button"
-                  onClick={() => startMatch()}
-                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-[#14361b] hover:bg-[#1b4924] text-[#fdfbf2] border-2 border-[#d4af37] px-6 py-3 text-sm font-extrabold transition-colors whitespace-nowrap shrink-0"
-                >
-                  <RotateCcw className="w-4 h-4 text-[#d4af37]" />
-                  <span>
-                    {mode === 'TOURNAMENT' && hud.matchWon
-                      ? 'Next Tournament Round · അടുത്ത മത്സരം'
-                      : 'Play Again · വീണ്ടും കളിക്കാം'}
-                  </span>
-                </button>
-
-                <button
-                  type="button"
                   onClick={() => {
                     simRef.current.screen = 'TITLE';
                     setScreen('TITLE');
                   }}
-                  className="w-full sm:w-auto rounded-xl bg-[#f4EFE0] hover:bg-[#ebe3ce] border border-[#d4af37] text-[#14361b] px-5 py-3 text-sm font-bold transition-colors whitespace-nowrap shrink-0"
+                  className="px-5 py-3 bg-stone-200 text-black font-bold rounded-xl text-xs"
                 >
-                  Change Mode / Batter
+                  Main Menu
                 </button>
               </div>
             </div>

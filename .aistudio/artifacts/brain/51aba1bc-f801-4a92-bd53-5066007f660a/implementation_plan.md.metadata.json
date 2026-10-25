@@ -1,6 +1,6 @@
 {
-  "summary":  "Comprehensive implementation plan for Gully Kerala Premier, an arcade village cricket game set on a rural Kerala paddy field (padam) with an angled isometric canvas view, authentic village rules, Web Audio synthesized sound effects & chenda beats, three game modes, unlockable batsmen, and Manglish commentary.",
-  "updatedAt":  "2026-10-24T10:39:25.167893805Z",
+  "summary":  "Implementation plan to replace Pass & Play (One Device) with dedicated Two-Device 1v1 Multiplayer using a 4-letter room code, shareable invite link, and a hybrid Server Room Sync + WebRTC transport so two separate devices connect reliably across any network.",
+  "updatedAt":  "2026-10-24T17:21:28.252374749Z",
   "requestFeedback":  true,
   "userFacing":  true
 }
